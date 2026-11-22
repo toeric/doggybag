@@ -12,7 +12,7 @@ from pathlib import Path
 from . import __version__, launchd, state
 from .conditions import Context, format_duration
 from .runner import decide, now_local, run_cycle
-from .tasks import discover
+from .tasks import discover, ignored
 from .usage import Usage, UsageError, Window, fetch_usage, find_claude
 
 
@@ -53,7 +53,7 @@ def cmd_setup(args) -> int:
         config.write_text(state.DEFAULT_CONFIG, encoding="utf-8")
         print(f"wrote {config}")
 
-    first_time = not any(p.is_file() and not p.name.startswith(".") for p in tasks_dir.iterdir())
+    first_time = not discover(tasks_dir)
     templates = resources.files("doggybag").joinpath("examples")
     for item in templates.iterdir():
         if not item.is_file():
@@ -132,8 +132,13 @@ def cmd_status(args) -> int:
     print()
 
     tasks = discover(root / "tasks")
+    skipped = ignored(root / "tasks")
+    if skipped:
+        names = ", ".join(p.name for p in skipped)
+        print(f"note: not tasks, so never run: {names} (a task is a .md file)")
+        print()
     if not tasks:
-        print(f"no tasks yet. Add a .md prompt or an executable script to {root / 'tasks'}")
+        print(f"no tasks yet. Add a .md file to {root / 'tasks'} (see the examples folder)")
         return 0
     for task in tasks:
         decision = decide(task, ctx, cfg, root)

@@ -1,21 +1,21 @@
-import os
-import stat
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from importlib import resources
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from doggybag import runner, state  # noqa: E402
+from doggybag import launchd, runner, state  # noqa: E402
 from doggybag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
-from doggybag.tasks import Task, _apply, discover, load_task, prompt_settings, script_settings  # noqa: E402
+from doggybag.tasks import discover, ignored, load_task  # noqa: E402
 from doggybag.usage import FIVE_HOURS, ONE_WEEK, Usage, UsageError, Window, parse_usage  # noqa: E402
 
 TPE = ZoneInfo("Asia/Taipei")
 NOW = datetime(2026, 11, 22, 15, 0, tzinfo=TPE)
+QUIET = state.Config(notify=False)
 
 # 2026-11-22 在 Claude Code 2.1.330 實際取得的輸出
 REAL_OUTPUT = """You are currently using your subscription to power your Claude Code usage
@@ -99,46 +99,6 @@ class Conditions(unittest.TestCase):
                 parse_when(text)
 
 
-def parse_header(text):
-    """把 script 開頭的設定套用到一個 Task 上，方便測試。"""
-    task = Task(Path("x.sh"))
-    _apply(task, script_settings(text), ("when", "cooldown", "timeout", "enabled"))
-    return task
-
-
-class Headers(unittest.TestCase):
-    def test_shell_header(self):
-        t = parse_header(
-            "#!/bin/bash\n# doggybag:\n#   when: idle >= 60m\n#   when: 5h.remaining >= 50\n"
-            "#   cooldown: 6h\n#   timeout: 20m\n\necho hi\n"
-        )
-        self.assertEqual(len(t.whens), 2)
-        self.assertEqual(t.cooldown, timedelta(hours=6))
-        self.assertEqual(t.timeout, timedelta(minutes=20))
-        self.assertTrue(t.enabled)
-
-    def test_other_comment_styles(self):
-        self.assertEqual(len(parse_header("// doggybag:\n//   when: idle >= 1h\nconsole.log(1)\n").whens), 1)
-
-    def test_no_header(self):
-        self.assertEqual(parse_header("#!/bin/bash\necho hi\n").whens, [])
-
-    def test_header_stops_at_first_other_line(self):
-        t = parse_header("# doggybag:\n#   when: idle >= 1h\n\n#   when: idle >= 2h\n")
-        self.assertEqual(len(t.whens), 1)
-
-    def test_unknown_key(self):
-        with self.assertRaises(ConditionError):
-            parse_header("# doggybag:\n#   whenever: idle >= 1h\n")
-
-    def test_enabled_false(self):
-        self.assertFalse(parse_header("# doggybag:\n#   when: idle\n#   enabled: false\n").enabled)
-
-    def test_script_cannot_use_prompt_only_settings(self):
-        with self.assertRaises(ConditionError):
-            parse_header("# doggybag:\n#   tools: Read\n")
-
-
 class Presets(unittest.TestCase):
     def test_presets_expand(self):
         self.assertEqual(
@@ -159,148 +119,6 @@ class Presets(unittest.TestCase):
         with self.assertRaises(ConditionError) as cm:
             parse_when("sometimes")
         self.assertIn("leftover", str(cm.exception))
-
-
-PROMPT_FILE = """---
-# a comment
-when: leftover
-when: idle
-in: {workdir}
-tools: Read, Edit
-model: haiku
-cooldown: 2h
-enabled: false
----
-Review the latest commits.
-
-Second paragraph.
-"""
-
-
-class PromptTasks(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        (self.root / "tasks").mkdir()
-        self.work = self.root / "repo"
-        self.work.mkdir()
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def write(self, text, name="10-review.md"):
-        p = self.root / "tasks" / name
-        p.write_text(text)
-        return load_task(p)
-
-    def test_frontmatter_and_body(self):
-        t = self.write(PROMPT_FILE.format(workdir=self.work))
-        self.assertIsNone(t.error)
-        self.assertTrue(t.is_prompt)
-        self.assertEqual(t.prompt, "Review the latest commits.\n\nSecond paragraph.")
-        self.assertEqual(len(t.whens), 2)
-        self.assertEqual(t.cwd, self.work)
-        self.assertEqual(t.cooldown, timedelta(hours=2))
-        self.assertFalse(t.enabled)
-        self.assertEqual(
-            t.command("/bin/claude"),
-            ["/bin/claude", "-p", "--model", "haiku", "--allowedTools", "Read", "Edit"],
-        )
-
-    def test_defaults_are_read_only_and_no_chmod_needed(self):
-        t = self.write("---\nwhen: idle\n---\nSay hi.\n")
-        self.assertTrue(t.executable)
-        self.assertEqual(t.command("claude"), ["claude", "-p", "--allowedTools", "Read", "Grep", "Glob"])
-        self.assertEqual(t.cwd, self.root / "tasks")
-
-    def test_tools_none(self):
-        t = self.write("---\ntools: none\n---\nSay hi.\n")
-        self.assertEqual(t.command("claude"), ["claude", "-p"])
-
-    def test_tilde_in_folder(self):
-        t = self.write("---\nin: ~/somewhere\n---\nSay hi.\n")
-        self.assertEqual(t.workdir, Path.home() / "somewhere")
-
-    def test_plain_markdown_without_settings_only_runs_by_hand(self):
-        t = self.write("Just a prompt.\n")
-        self.assertIsNone(t.error)
-        self.assertEqual(t.whens, [])
-
-    def test_errors(self):
-        self.assertIn("empty", self.write("---\nwhen: idle\n---\n\n").error)
-        self.assertIn("never closed", self.write("---\nwhen: idle\n").error)
-        self.assertIn("expected `key: value`", self.write("---\nwhen: idle\nSay hi.\n").error)
-        self.assertIn("unknown setting", self.write("---\nwhne: idle\n---\nHi\n").error)
-        self.assertIn("true or false", self.write("---\nenabled: maybe\n---\nHi\n").error)
-
-    def ctx(self):
-        return Context(make_usage(), timedelta(hours=2), NOW)
-
-    def test_switched_off_waits_but_can_be_run_by_hand(self):
-        t = self.write("---\nwhen: idle\nenabled: false\n---\nHi\n")
-        cfg = state.Config(notify=False)
-        d = runner.decide(t, self.ctx(), cfg, self.root)
-        self.assertFalse(d.run)
-        self.assertIn("switched off", d.reason)
-        self.assertTrue(runner.decide(t, self.ctx(), cfg, self.root, force=True).run)
-
-    def test_missing_folder_is_reported_even_by_hand(self):
-        t = self.write("---\nwhen: idle\nin: /no/such/folder\n---\nHi\n")
-        d = runner.decide(t, self.ctx(), state.Config(notify=False), self.root, force=True)
-        self.assertFalse(d.run)
-        self.assertIn("folder not found", d.reason)
-
-    def test_prompt_reaches_the_command_on_stdin_in_the_right_folder(self):
-        # 用一個假的 claude：把收到的參數、所在資料夾和 stdin 印出來
-        fake = self.root / "fake-claude"
-        fake.write_text('#!/bin/sh\necho "args=$*"\necho "cwd=$(pwd -P)"\necho "stdin=$(cat)"\n')
-        fake.chmod(0o755)
-        t = self.write(f"---\nwhen: idle\nin: {self.work}\n---\n- Do the thing\n")
-        cfg = state.Config(notify=False, claude=str(fake))
-        ctx = Context(make_usage(), timedelta(hours=2), runner.now_local())
-        entry = runner.execute(t, ctx, "test", cfg, self.root, lambda s: None)
-        log = Path(entry["log"]).read_text()
-        self.assertEqual(entry["exit"], 0)
-        self.assertIn("args=-p --allowedTools Read Grep Glob", log)
-        self.assertIn(f"cwd={self.work.resolve()}", log)
-        self.assertIn("stdin=- Do the thing", log)
-
-
-class Setup(unittest.TestCase):
-    def test_starter_template_is_valid_and_switched_off(self):
-        from importlib import resources
-
-        with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / "10-review.md"
-            p.write_text(resources.files("doggybag").joinpath("examples/todo-triage.md").read_text())
-            t = load_task(p)
-            self.assertIsNone(t.error)
-            self.assertFalse(t.enabled)
-            self.assertEqual(len(t.whens), 1)
-            self.assertEqual(t.tools, ["Read", "Grep", "Glob"])
-
-    def test_prompt_examples_are_valid(self):
-        from importlib import resources
-
-        for name in ("docs-check.md", "write-tests.md", "run-skill.md"):
-            with tempfile.TemporaryDirectory() as d:
-                p = Path(d) / name
-                p.write_text(resources.files("doggybag").joinpath(f"examples/{name}").read_text())
-                t = load_task(p)
-                self.assertIsNone(t.error, name)
-                self.assertTrue(t.whens, name)
-                self.assertTrue(t.prompt, name)
-
-    def test_script_templates_are_valid(self):
-        from importlib import resources
-
-        for name in ("review-commits.sh", "own-program.py"):
-            with tempfile.TemporaryDirectory() as d:
-                p = Path(d) / name
-                p.write_text(resources.files("doggybag").joinpath(f"examples/{name}").read_text())
-                t = load_task(p)
-                self.assertIsNone(t.error, name)
-                self.assertTrue(t.whens, name)
 
 
 class Idle(unittest.TestCase):
@@ -341,112 +159,222 @@ class Idle(unittest.TestCase):
             )
 
 
-class Deciding(unittest.TestCase):
+class TaskCase(unittest.TestCase):
+    """提供一個暫時的 ~/.doggybag 和寫 task 檔的工具。"""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "tasks").mkdir()
-        self.cfg = state.Config(notify=False)
+        self.work = self.root / "repo"
+        self.work.mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def add_task(self, name, body, executable=True):
+    def write(self, text, name="10-task.md"):
         p = self.root / "tasks" / name
-        p.write_text(body)
-        if executable:
-            p.chmod(p.stat().st_mode | stat.S_IXUSR)
-        return p
+        p.write_text(text)
+        return load_task(p)
 
     def ctx(self, **kw):
         return Context(make_usage(**kw), timedelta(hours=2), NOW)
 
-    def decide(self, ctx=None):
-        task = discover(self.root / "tasks")[0]
-        return runner.decide(task, ctx or self.ctx(), self.cfg, self.root)
+    def live_ctx(self):
+        return Context(make_usage(), timedelta(hours=2), runner.now_local())
+
+
+class Cards(TaskCase):
+    def test_settings_and_body(self):
+        t = self.write(
+            "---\n# a comment\nwhen: leftover\nwhen: idle\n"
+            f"in: {self.work}\ntools: Read, Edit\nmodel: haiku\ncooldown: 2h\ntimeout: 20m\n"
+            "enabled: false\n---\nReview the latest commits.\n\nSecond paragraph.\n"
+        )
+        self.assertIsNone(t.error)
+        self.assertEqual(t.body, "Review the latest commits.\n\nSecond paragraph.")
+        self.assertEqual(len(t.whens), 2)
+        self.assertEqual(t.cwd, self.work)
+        self.assertEqual(t.cooldown, timedelta(hours=2))
+        self.assertEqual(t.timeout, timedelta(minutes=20))
+        self.assertFalse(t.enabled)
+
+    def test_claude_is_the_default_and_reads_only(self):
+        t = self.write("---\nwhen: idle\n---\nSay hi.\n")
+        self.assertEqual(t.command("claude"), ["claude", "-p", "--allowedTools", "Read", "Grep", "Glob"])
+        self.assertEqual(t.cwd, self.root / "tasks")
+
+    def test_tools_and_model_go_to_claude(self):
+        t = self.write("---\ntools: Read, Edit\nmodel: haiku\n---\nSay hi.\n")
+        self.assertEqual(
+            t.command("/bin/claude"),
+            ["/bin/claude", "-p", "--model", "haiku", "--allowedTools", "Read", "Edit"],
+        )
+
+    def test_tools_none(self):
+        self.assertEqual(self.write("---\ntools: none\n---\nSay hi.\n").command("claude"), ["claude", "-p"])
+
+    def test_run_replaces_claude(self):
+        t = self.write("---\nwhen: idle\nrun: python3 ~/agents/a.py --fast | tee out.txt\n---\nDo it.\n")
+        self.assertIsNone(t.error)
+        self.assertEqual(t.command("claude"), ["/bin/sh", "-c", "python3 ~/agents/a.py --fast | tee out.txt"])
+
+    def test_run_needs_no_body(self):
+        t = self.write("---\nwhen: idle\nrun: ./nightly.sh\n---\n")
+        self.assertIsNone(t.error)
+        self.assertEqual(t.body, "")
+
+    def test_run_with_claude_only_settings_is_an_error(self):
+        self.assertIn("only apply when Claude", self.write("---\nrun: ./a.sh\ntools: Read\n---\n").error)
+        self.assertIn("only apply when Claude", self.write("---\nrun: ./a.sh\nmodel: haiku\n---\n").error)
+
+    def test_tilde_in_folder(self):
+        self.assertEqual(self.write("---\nin: ~/x\n---\nHi\n").workdir, Path.home() / "x")
+
+    def test_file_without_settings_only_runs_by_hand(self):
+        t = self.write("Just a prompt.\n")
+        self.assertIsNone(t.error)
+        self.assertEqual(t.whens, [])
+
+    def test_errors(self):
+        self.assertIn("nothing to do", self.write("---\nwhen: idle\n---\n\n").error)
+        self.assertIn("never closed", self.write("---\nwhen: idle\n").error)
+        self.assertIn("expected `key: value`", self.write("---\nwhen: idle\nSay hi.\n").error)
+        self.assertIn("unknown setting", self.write("---\nwhne: idle\n---\nHi\n").error)
+        self.assertIn("true or false", self.write("---\nenabled: maybe\n---\nHi\n").error)
+        self.assertIn("unknown signal", self.write("---\nwhen: nonsense >= 1\n---\nHi\n").error)
+
+    def test_only_md_files_are_tasks(self):
+        self.write("---\nwhen: idle\n---\nHi\n", name="20-b.md")
+        self.write("---\nwhen: idle\n---\nHi\n", name="10-a.md")
+        (self.root / "tasks" / "old-script.sh").write_text("#!/bin/sh\n")
+        (self.root / "tasks" / ".hidden.md").write_text("x")
+        (self.root / "tasks" / "examples").mkdir()
+        (self.root / "tasks" / "examples" / "x.md").write_text("x")
+        self.assertEqual([t.name for t in discover(self.root / "tasks")], ["10-a.md", "20-b.md"])
+        self.assertEqual([p.name for p in ignored(self.root / "tasks")], ["old-script.sh"])
+
+
+class Deciding(TaskCase):
+    def decide(self, text, ctx=None, force=False):
+        return runner.decide(self.write(text), ctx or self.ctx(), QUIET, self.root, force=force)
 
     def test_runs_when_condition_holds(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: idle >= 60m\n")
-        self.assertTrue(self.decide().run)
+        self.assertTrue(self.decide("---\nwhen: idle >= 60m\n---\nHi\n").run)
 
     def test_any_when_line_is_enough(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: idle >= 9h\n#   when: 5h.remaining >= 50\n")
-        self.assertTrue(self.decide().run)
-
-    def test_not_executable_is_disabled(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: idle >= 60m\n", executable=False)
-        d = self.decide()
-        self.assertFalse(d.run)
-        self.assertIn("chmod", d.reason)
+        self.assertTrue(self.decide("---\nwhen: idle >= 9h\nwhen: 5h.remaining >= 50\n---\nHi\n").run)
 
     def test_no_condition_never_runs_automatically(self):
-        self.add_task("a.sh", "#!/bin/sh\necho hi\n")
-        self.assertFalse(self.decide().run)
+        self.assertFalse(self.decide("Hi\n").run)
+        self.assertTrue(self.decide("Hi\n", force=True).run)
 
-    def test_header_error_is_reported(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: nonsense >= 1\n")
-        d = self.decide()
+    def test_error_is_reported(self):
+        d = self.decide("---\nwhen: nonsense >= 1\n---\nHi\n", force=True)
         self.assertFalse(d.run)
         self.assertIn("unknown signal", d.reason)
 
     def test_reserve_blocks(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: idle >= 60m\n")
-        d = self.decide(self.ctx(five_used=95))
+        d = self.decide("---\nwhen: idle\n---\nHi\n", self.ctx(five_used=95))
         self.assertFalse(d.run)
         self.assertIn("reserve", d.reason)
 
+    def test_switched_off_waits_but_can_be_run_by_hand(self):
+        text = "---\nwhen: idle\nenabled: false\n---\nHi\n"
+        d = self.decide(text)
+        self.assertFalse(d.run)
+        self.assertIn("switched off", d.reason)
+        self.assertTrue(self.decide(text, force=True).run)
+
+    def test_missing_folder_is_reported_for_any_task_even_by_hand(self):
+        for text in ("---\nwhen: idle\nin: /no/such\n---\nHi\n", "---\nwhen: idle\nin: /no/such\nrun: ./a.sh\n---\n"):
+            d = self.decide(text, force=True)
+            self.assertFalse(d.run)
+            self.assertIn("folder not found", d.reason)
+
     def test_cooldown_blocks_but_exit_75_does_not(self):
-        self.add_task("a.sh", "#!/bin/sh\n# doggybag:\n#   when: idle >= 60m\n#   cooldown: 6h\n")
+        text = "---\nwhen: idle\ncooldown: 6h\n---\nHi\n"
         ended = (NOW - timedelta(hours=1)).timestamp()
-        state.record_run(self.root, {"task": "a.sh", "ended": ended, "exit": 0, "stopped": None})
-        self.assertIn("cooling down", self.decide().reason)
-        state.record_run(self.root, {"task": "a.sh", "ended": ended, "exit": 75, "stopped": None})
-        self.assertTrue(self.decide().run)
+        state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 0, "stopped": None})
+        self.assertIn("cooling down", self.decide(text).reason)
+        state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 75, "stopped": None})
+        self.assertTrue(self.decide(text).run)
 
 
-class Executing(unittest.TestCase):
-    def test_runs_script_passes_env_and_records(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            (root / "tasks").mkdir()
-            p = root / "tasks" / "10-hello.sh"
-            p.write_text('#!/bin/sh\necho "left=$DOGGYBAG_5H_REMAINING task=$DOGGYBAG_TASK"\nexit 3\n')
-            p.chmod(0o755)
-            task = discover(root / "tasks")[0]
-            ctx = Context(make_usage(), timedelta(0), runner.now_local())
-            lines = []
-            entry = runner.execute(task, ctx, "test", state.Config(notify=False), root, lines.append)
-            self.assertEqual(entry["exit"], 3)
-            self.assertIn("left=77 task=10-hello.sh", Path(entry["log"]).read_text())
-            self.assertEqual(state.last_run(root, "10-hello.sh")["exit"], 3)
-            self.assertTrue(any("failed with exit 3" in line for line in lines))
+class Executing(TaskCase):
+    def execute(self, task, cfg=QUIET, out=None):
+        return runner.execute(task, self.live_ctx(), "test", cfg, self.root, out or (lambda s: None))
+
+    def test_body_reaches_claude_on_stdin_in_the_right_folder(self):
+        # 用一個假的 claude：把收到的參數、所在資料夾和 stdin 印出來
+        fake = self.root / "fake-claude"
+        fake.write_text('#!/bin/sh\necho "args=$*"\necho "cwd=$(pwd -P)"\necho "stdin=$(cat)"\n')
+        fake.chmod(0o755)
+        t = self.write(f"---\nwhen: idle\nin: {self.work}\n---\n- Do the thing\n")
+        entry = self.execute(t, state.Config(notify=False, claude=str(fake)))
+        log = Path(entry["log"]).read_text()
+        self.assertEqual(entry["exit"], 0)
+        self.assertIn("args=-p --allowedTools Read Grep Glob", log)
+        self.assertIn(f"cwd={self.work.resolve()}", log)
+        self.assertIn("stdin=- Do the thing", log)
+
+    def test_run_gets_body_folder_and_env_and_its_exit_code_is_recorded(self):
+        lines = []
+        t = self.write(
+            f"---\nwhen: idle\nin: {self.work}\n"
+            'run: echo "stdin=$(cat) cwd=$(pwd -P) left=$DOGGYBAG_5H_REMAINING task=$DOGGYBAG_TASK"; exit 3\n'
+            "---\nInstructions for my agent\n"
+        )
+        entry = self.execute(t, out=lines.append)
+        log = Path(entry["log"]).read_text()
+        self.assertEqual(entry["exit"], 3)
+        self.assertIn("stdin=Instructions for my agent", log)
+        self.assertIn(f"cwd={self.work.resolve()}", log)
+        self.assertIn("left=77 task=10-task.md", log)
+        self.assertEqual(state.last_run(self.root, "10-task.md")["exit"], 3)
+        self.assertTrue(any("failed with exit 3" in line for line in lines))
+
+    def test_run_without_body_sees_empty_input(self):
+        t = self.write('---\nwhen: idle\nrun: echo "got=[$(cat)]"\n---\n')
+        self.assertIn("got=[]", Path(self.execute(t)["log"]).read_text())
 
     def test_timeout_stops_the_whole_process_group(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            (root / "tasks").mkdir()
-            p = root / "tasks" / "slow.sh"
-            p.write_text("#!/bin/sh\n# doggybag:\n#   timeout: 0.02m\nsleep 60 &\nwait\n")
-            p.chmod(0o755)
-            task = discover(root / "tasks")[0]
-            ctx = Context(make_usage(), timedelta(0), runner.now_local())
-            entry = runner.execute(task, ctx, "test", state.Config(notify=False), root, lambda s: None)
-            self.assertIn("timeout", entry["stopped"])
-            self.assertLess(entry["ended"] - entry["started"], 20)
+        t = self.write("---\nwhen: idle\ntimeout: 0.02m\nrun: sleep 60 & wait\n---\n")
+        entry = self.execute(t)
+        self.assertIn("timeout", entry["stopped"])
+        self.assertLess(entry["ended"] - entry["started"], 20)
 
     def test_only_one_run_at_a_time(self):
+        with runner.single_instance(self.root) as first:
+            self.assertTrue(first)
+            with runner.single_instance(self.root) as second:
+                self.assertFalse(second)
+
+
+class Examples(unittest.TestCase):
+    def test_every_example_card_is_valid(self):
+        examples = resources.files("doggybag").joinpath("examples")
+        cards = [item for item in examples.iterdir() if item.name.endswith(".md")]
+        self.assertGreaterEqual(len(cards), 5)
+        for item in cards:
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / item.name
+                p.write_text(item.read_text())
+                t = load_task(p)
+                self.assertIsNone(t.error, item.name)
+                self.assertTrue(t.whens, item.name)
+
+    def test_starter_is_switched_off_and_reads_only(self):
         with tempfile.TemporaryDirectory() as d:
-            root = Path(d)
-            with runner.single_instance(root) as first:
-                self.assertTrue(first)
-                with runner.single_instance(root) as second:
-                    self.assertFalse(second)
+            p = Path(d) / "10-todo-triage.md"
+            p.write_text(resources.files("doggybag").joinpath("examples/todo-triage.md").read_text())
+            t = load_task(p)
+            self.assertFalse(t.enabled)
+            self.assertEqual(t.command("claude")[-3:], ["Read", "Grep", "Glob"])
 
 
 class Schedule(unittest.TestCase):
     def test_plist_is_valid_and_escaped(self):
-        from doggybag import launchd
-
         data = launchd.build_plist(Path("/tmp/a&b"), 10, "/opt/tools/claude")
         text = launchd.render_plist(data)
         self.assertIn("<integer>600</integer>", text)
