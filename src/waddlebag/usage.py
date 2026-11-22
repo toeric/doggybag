@@ -1,6 +1,6 @@
 """Read the Claude subscription quota.
 
-The source is `claude -p "/usage"`: a headless call that uses no quota, so doggybag never touches login credentials.
+The source is `claude -p "/usage"`: a headless call that uses no quota, so waddlebag never touches login credentials.
 The output is text meant for people, so all parsing lives in this file and a format change is fixed here.
 """
 
@@ -124,7 +124,7 @@ def parse_usage(text: str, now: datetime) -> Usage:
 
 
 def find_claude(configured: str | None = None) -> str | None:
-    return configured or os.environ.get("DOGGYBAG_CLAUDE") or shutil.which("claude")
+    return configured or os.environ.get("WADDLEBAG_CLAUDE") or shutil.which("claude")
 
 
 def fetch_usage(claude: str | None = None, now: datetime | None = None) -> Usage:

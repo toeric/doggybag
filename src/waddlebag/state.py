@@ -1,4 +1,4 @@
-"""doggybag's local state: settings, idle tracking and the run log. All of it lives in ~/.doggybag/."""
+"""waddlebag's local state: settings, idle tracking and the run log. All of it lives in ~/.waddlebag/."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from .usage import Usage
 
 DEFAULT_CONFIG = """\
-# doggybag settings
+# waddlebag settings
 
 # Never start a task, and stop a running one, when less than this much quota is left (%).
 reserve_5h = 10
@@ -21,7 +21,7 @@ reserve_week = 5
 # Desktop notification when a task starts and when it finishes.
 notify = true
 
-# How often the scheduler checks, in minutes. Run `doggybag setup` again after changing it.
+# How often the scheduler checks, in minutes. Run `waddlebag setup` again after changing it.
 interval_minutes = 10
 """
 
@@ -30,7 +30,7 @@ RESET_JITTER_SECONDS = 15 * 60
 
 
 def home() -> Path:
-    return Path(os.environ.get("DOGGYBAG_HOME") or Path.home() / ".doggybag")
+    return Path(os.environ.get("WADDLEBAG_HOME") or Path.home() / ".waddlebag")
 
 
 @dataclass
@@ -63,7 +63,7 @@ def _read_json(path: Path) -> dict:
 def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
     """Record this usage sample and return how long nobody has used quota.
 
-    doggybag only sees usage when it checks, so idle time is measured from the last time it saw usage go up.
+    waddlebag only sees usage when it checks, so idle time is measured from the last time it saw usage go up.
     Usage has 1% resolution, so very small amounts of use are invisible.
     """
     path = root / "state.json"

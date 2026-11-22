@@ -1,6 +1,6 @@
-# doggybag 🥡
+# waddlebag 🥡
 
-**Your Claude subscription quota resets whether you used it or not. doggybag spends what's left on jobs you choose, before it expires.**
+**Your Claude subscription quota resets whether you used it or not. waddlebag spends what's left on jobs you choose, before it expires.**
 
 ## What it looks like
 
@@ -25,7 +25,7 @@ Every job has the same three parts:
 | `in:` | Where? | in `~/work/myrepo` |
 | the text below | What should be done? | find the TODO comments |
 
-doggybag checks your quota every 10 minutes. When the moment comes it hands the text to Claude Code, and saves the answer to a file. You don't have to be at your computer.
+waddlebag checks your quota every 10 minutes. When the moment comes it hands the text to Claude Code, and saves the answer to a file. You don't have to be at your computer.
 
 Want something other than Claude Code to do the work? Add one line, `run:`, and the text goes to that command instead. [More on that below.](#handing-the-job-to-something-else)
 
@@ -36,16 +36,16 @@ You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) 
 **1. Install**
 
 ```bash
-uv tool install git+https://github.com/toeric/doggybag    # or: pipx install git+https://github.com/toeric/doggybag
-doggybag setup
+uv tool install git+https://github.com/toeric/waddlebag    # or: pipx install git+https://github.com/toeric/waddlebag
+waddlebag setup
 ```
 
-`setup` creates the folder `~/.doggybag/tasks/` and puts a first job in it, the one shown above. It is switched off until you edit it.
+`setup` creates the folder `~/.waddlebag/tasks/` and puts a first job in it, the one shown above. It is switched off until you edit it.
 
 **2. Edit the first job**
 
 ```bash
-open -e ~/.doggybag/tasks/10-todo-triage.md
+open -e ~/.waddlebag/tasks/10-todo-triage.md
 ```
 
 Change the folder after `in:` to one of your own projects, and change `enabled: false` to `true`.
@@ -53,7 +53,7 @@ Change the folder after `in:` to one of your own projects, and change `enabled: 
 **3. Check**
 
 ```bash
-doggybag status
+waddlebag status
 ```
 
 ```text
@@ -64,24 +64,24 @@ week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
     waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
 ```
 
-That's all. It will run by itself when the conditions hold. To see it work right now, run `doggybag run 10-todo-triage`.
+That's all. It will run by itself when the conditions hold. To see it work right now, run `waddlebag run 10-todo-triage`.
 
 ## Example jobs
 
-Six ready-made jobs. `setup` copies them into `~/.doggybag/tasks/examples/`.
+Six ready-made jobs. `setup` copies them into `~/.waddlebag/tasks/examples/`.
 
-**To use one:** copy it into `~/.doggybag/tasks/`, set the folder after `in:`, and change `enabled: false` to `true`.
+**To use one:** copy it into `~/.waddlebag/tasks/`, set the folder after `in:`, and change `enabled: false` to `true`.
 
 Every example has the same layout: a first line that says what it does, the settings, then the text of the job.
 
 | Example | What it does | Runs when | Changes your files? |
 |---|---|---|---|
-| [todo-triage.md](src/doggybag/examples/todo-triage.md?plain=1) | Lists the five TODO comments most worth fixing | quota is about to reset with some left | No |
-| [docs-check.md](src/doggybag/examples/docs-check.md?plain=1) | Finds places where the README no longer matches the code | you are behind on the week | No |
-| [write-tests.md](src/doggybag/examples/write-tests.md?plain=1) | Writes tests for the least-tested file. Allowed to change files | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
-| [run-skill.md](src/doggybag/examples/run-skill.md?plain=1) | Runs one of your own Claude Code skills. Replace /my-skill with its name | nobody has used Claude for an hour | Depends on the skill |
-| [review-commits.md](src/doggybag/examples/review-commits.md?plain=1) | Uses run: to collect the latest commits and pipe them to Claude for review | quota is about to reset with some left | No |
-| [own-agent.md](src/doggybag/examples/own-agent.md?plain=1) | Uses run: to hand the text below to a program of your own | the last day of the week, with a lot left | Up to your program |
+| [todo-triage.md](src/waddlebag/examples/todo-triage.md?plain=1) | Lists the five TODO comments most worth fixing | quota is about to reset with some left | No |
+| [docs-check.md](src/waddlebag/examples/docs-check.md?plain=1) | Finds places where the README no longer matches the code | you are behind on the week | No |
+| [write-tests.md](src/waddlebag/examples/write-tests.md?plain=1) | Writes tests for the least-tested file. Allowed to change files | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
+| [run-skill.md](src/waddlebag/examples/run-skill.md?plain=1) | Runs one of your own Claude Code skills. Replace /my-skill with its name | nobody has used Claude for an hour | Depends on the skill |
+| [review-commits.md](src/waddlebag/examples/review-commits.md?plain=1) | Uses run: to collect the latest commits and pipe them to Claude for review | quota is about to reset with some left | No |
+| [own-agent.md](src/waddlebag/examples/own-agent.md?plain=1) | Uses run: to hand the text below to a program of your own | the last day of the week, with a lot left | Up to your program |
 
 The full text of each one:
 
@@ -197,11 +197,11 @@ Find the TODO comments in this repository and pick the five most worth fixing.
 
 ## Where the answer goes
 
-Everything a job prints is saved in `~/.doggybag/logs/`. `doggybag status` shows the file for each job's last run:
+Everything a job prints is saved in `~/.waddlebag/logs/`. `waddlebag status` shows the file for each job's last run:
 
 ```text
 · 10-todo-triage.md
-    last run Nov 22 18:50 (exit 0) · output: ~/.doggybag/logs/10-todo-triage-20261122-185043.log
+    last run Nov 22 18:50 (exit 0) · output: ~/.waddlebag/logs/10-todo-triage-20261122-185043.log
 ```
 
 You also get a desktop notification when a job starts and when it finishes.
@@ -286,19 +286,19 @@ Two things to know:
 
 | To… | Do this |
 |---|---|
-| add a job | put a file in `~/.doggybag/tasks/` |
+| add a job | put a file in `~/.waddlebag/tasks/` |
 | remove a job | delete the file |
 | switch a job off for now | set `enabled: false` |
-| change the order | rename the files; doggybag goes through them in filename order |
-| try a job right now | `doggybag run 10-todo-triage` (ignores `when` and `enabled`) |
+| change the order | rename the files; waddlebag goes through them in filename order |
+| try a job right now | `waddlebag run 10-todo-triage` (ignores `when` and `enabled`) |
 
 ## The three commands
 
 | Command | What it does |
 |---|---|
-| `doggybag setup` | Checks your environment and installs the schedule. `--no-schedule` skips the schedule, `--uninstall` removes it |
-| `doggybag status` | Shows your quota, and whether each task would run right now and why |
-| `doggybag run` | Checks once and runs the tasks that are due. `doggybag run <task>` runs that task now |
+| `waddlebag setup` | Checks your environment and installs the schedule. `--no-schedule` skips the schedule, `--uninstall` removes it |
+| `waddlebag status` | Shows your quota, and whether each task would run right now and why |
+| `waddlebag run` | Checks once and runs the tasks that are due. `waddlebag run <task>` runs that task now |
 
 ## Reference
 
@@ -308,9 +308,9 @@ The details, for when you need them. In the code and the commands a job is calle
 
 - Conditions joined by `and` on one line must all hold.
 - With several `when:` lines, any one of them is enough.
-- A task with no `when:` never runs automatically. Run it by hand with `doggybag run <task>`.
+- A task with no `when:` never runs automatically. Run it by hand with `waddlebag run <task>`.
 - Tasks are checked in filename order and run one at a time.
-- Only `.md` files directly inside `~/.doggybag/tasks/` are tasks. Other files and subfolders are ignored.
+- Only `.md` files directly inside `~/.waddlebag/tasks/` are tasks. Other files and subfolders are ignored.
 
 The three words are short for:
 
@@ -352,22 +352,22 @@ Durations use `m`, `h` and `d`.
 |---|---|
 | Standard input | The text below the settings |
 | Working directory | The folder after `in:` |
-| `DOGGYBAG_TASK` | The task's filename |
-| `DOGGYBAG_REASON` | Why it was triggered |
-| `DOGGYBAG_5H_REMAINING`, `DOGGYBAG_WEEK_REMAINING` | Percent left |
-| `DOGGYBAG_5H_RESETS_AT`, `DOGGYBAG_WEEK_RESETS_AT` | Reset time (epoch seconds) |
-| `DOGGYBAG_LOG` | Path of this run's log file |
+| `WADDLEBAG_TASK` | The task's filename |
+| `WADDLEBAG_REASON` | Why it was triggered |
+| `WADDLEBAG_5H_REMAINING`, `WADDLEBAG_WEEK_REMAINING` | Percent left |
+| `WADDLEBAG_5H_RESETS_AT`, `WADDLEBAG_WEEK_RESETS_AT` | Reset time (epoch seconds) |
+| `WADDLEBAG_LOG` | Path of this run's log file |
 
 The command reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
 
-Everything the command prints is written to `~/.doggybag/logs/`.
+Everything the command prints is written to `~/.waddlebag/logs/`.
 
 ### The brake
 
-doggybag cannot know how much quota a task will use, so it re-reads your quota every 5 minutes while a task runs.
+waddlebag cannot know how much quota a task will use, so it re-reads your quota every 5 minutes while a task runs.
 When the remaining quota falls below the reserve, it sends SIGTERM to the task (and force-stops it after 30 seconds), and starts no further tasks.
 
-The reserve is set in `~/.doggybag/config.toml`:
+The reserve is set in `~/.waddlebag/config.toml`:
 
 ```toml
 reserve_5h = 10      # keep at least 10% of the 5-hour window
@@ -379,10 +379,10 @@ interval_minutes = 10
 ### Known limitations
 
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
-- **Automatic scheduling is macOS-only for now.** On Linux, call `doggybag run` from cron.
-- **Quota comes from the text output of `claude -p "/usage"`.** That call uses no quota, and doggybag never touches your login credentials, but parsing will break if the output format changes (last verified with Claude Code 2.1.330).
+- **Automatic scheduling is macOS-only for now.** On Linux, call `waddlebag run` from cron.
+- **Quota comes from the text output of `claude -p "/usage"`.** That call uses no quota, and waddlebag never touches your login credentials, but parsing will break if the output format changes (last verified with Claude Code 2.1.330).
 - **Usage has 1% resolution.** `idle` cannot see very small amounts of use.
-- **`idle` only updates when doggybag checks.** It is measured from the last time doggybag saw usage go up.
+- **`idle` only updates when waddlebag checks.** It is measured from the last time waddlebag saw usage go up.
 - **With no 5-hour window in progress**, conditions on `5h.resets_in` and `5h.behind` are never true. What `/usage` prints in that state has not been verified yet.
 
 ## Development
@@ -391,7 +391,7 @@ interval_minutes = 10
 python3 -m unittest discover -s tests
 ```
 
-Set `DOGGYBAG_HOME` to move `~/.doggybag` somewhere else for testing.
+Set `WADDLEBAG_HOME` to move `~/.waddlebag` somewhere else for testing.
 
 ## License
 

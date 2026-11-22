@@ -54,7 +54,7 @@ def cmd_setup(args) -> int:
         print(f"wrote {config}")
 
     first_time = not discover(tasks_dir)
-    templates = resources.files("doggybag").joinpath("examples")
+    templates = resources.files("waddlebag").joinpath("examples")
     for item in templates.iterdir():
         if not item.is_file():
             continue
@@ -96,7 +96,7 @@ def cmd_setup(args) -> int:
         print(f"✓ scheduled: checks every {cfg.interval_minutes} minutes while this Mac is awake")
     else:
         print("automatic scheduling is only set up on macOS for now. Add this to cron instead:")
-        print(f"  */{cfg.interval_minutes} * * * * {sys.executable} -m doggybag run")
+        print(f"  */{cfg.interval_minutes} * * * * {sys.executable} -m waddlebag run")
 
     print()
     if starter.exists():
@@ -104,7 +104,7 @@ def cmd_setup(args) -> int:
         print("  set the folder after `in:`, then change `enabled: false` to `true`.")
     else:
         print(f"Next: add a task to {tasks_dir} (see the examples folder).")
-    print("`doggybag status` shows when each task would run.")
+    print("`waddlebag status` shows when each task would run.")
     return 0
 
 
@@ -121,13 +121,13 @@ def cmd_status(args) -> int:
     ctx = Context(usage, idle, now)
 
     _print_usage(usage, now)
-    print(f"idle  no quota used for {format_duration(idle)} (as far as doggybag has seen)")
+    print(f"idle  no quota used for {format_duration(idle)} (as far as waddlebag has seen)")
     if sys.platform == "darwin":
         scheduled = launchd.is_installed()
         print(
             f"schedule  every {cfg.interval_minutes} minutes"
             if scheduled
-            else "schedule  not installed (run `doggybag setup`)"
+            else "schedule  not installed (run `waddlebag setup`)"
         )
     print()
 
@@ -158,13 +158,13 @@ def cmd_run(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="doggybag",
+        prog="waddlebag",
         description="Run your own scripts when Claude quota is about to go unused.",
     )
-    parser.add_argument("--version", action="version", version=f"doggybag {__version__}")
+    parser.add_argument("--version", action="version", version=f"waddlebag {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("setup", help="check Claude Code, create ~/.doggybag, install the schedule")
+    p = sub.add_parser("setup", help="check Claude Code, create ~/.waddlebag, install the schedule")
     p.add_argument("--no-schedule", action="store_true", help="do everything except the schedule")
     p.add_argument("--uninstall", action="store_true", help="remove the schedule")
     p.set_defaults(func=cmd_setup)

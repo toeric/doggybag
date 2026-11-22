@@ -1,4 +1,4 @@
-"""Scheduling on macOS: launchd runs `doggybag run` on a timer."""
+"""Scheduling on macOS: launchd runs `waddlebag run` on a timer."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import sys
 from html import escape
 from pathlib import Path
 
-LABEL = "com.doggybag.agent"
+LABEL = "com.waddlebag.agent"
 
 
 def plist_path() -> Path:
@@ -27,16 +27,16 @@ def build_plist(root: Path, interval_minutes: int, claude: str | None) -> dict:
         if claude_dir not in path_dirs:
             path_dirs.insert(0, claude_dir)
     env = {"PATH": os.pathsep.join(path_dirs)}
-    if os.environ.get("DOGGYBAG_HOME"):
-        env["DOGGYBAG_HOME"] = str(root)
+    if os.environ.get("WADDLEBAG_HOME"):
+        env["WADDLEBAG_HOME"] = str(root)
     return {
         "Label": LABEL,
-        "ProgramArguments": [sys.executable, "-m", "doggybag", "run"],
+        "ProgramArguments": [sys.executable, "-m", "waddlebag", "run"],
         "StartInterval": max(1, int(interval_minutes)) * 60,
         "RunAtLoad": False,
         "EnvironmentVariables": env,
-        "StandardOutPath": str(root / "logs" / "doggybag.log"),
-        "StandardErrorPath": str(root / "logs" / "doggybag.log"),
+        "StandardOutPath": str(root / "logs" / "waddlebag.log"),
+        "StandardErrorPath": str(root / "logs" / "waddlebag.log"),
         "ProcessType": "Background",
     }
 

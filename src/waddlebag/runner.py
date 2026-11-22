@@ -1,6 +1,6 @@
 """Decide which tasks are due, and run them.
 
-doggybag cannot know how much quota a task will use, so its only brake is this:
+waddlebag cannot know how much quota a task will use, so its only brake is this:
 keep reading the quota while a task runs, stop it below the reserve, and start no further tasks.
 """
 
@@ -82,7 +82,7 @@ def decide(
 
 @contextmanager
 def single_instance(root: Path):
-    """Allow only one `doggybag run` at a time. Yields False when the lock is taken."""
+    """Allow only one `waddlebag run` at a time. Yields False when the lock is taken."""
     root.mkdir(parents=True, exist_ok=True)
     f = open(root / "lock", "w")
     try:
@@ -121,15 +121,15 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
 
     env = dict(os.environ)
     env.update(
-        DOGGYBAG_TASK=task.name,
-        DOGGYBAG_REASON=reason,
-        DOGGYBAG_5H_REMAINING=str(ctx.usage.five_hour.remaining),
-        DOGGYBAG_WEEK_REMAINING=str(ctx.usage.week.remaining),
-        DOGGYBAG_LOG=str(log_path),
+        WADDLEBAG_TASK=task.name,
+        WADDLEBAG_REASON=reason,
+        WADDLEBAG_5H_REMAINING=str(ctx.usage.five_hour.remaining),
+        WADDLEBAG_WEEK_REMAINING=str(ctx.usage.week.remaining),
+        WADDLEBAG_LOG=str(log_path),
     )
     for key, window in (("5H", ctx.usage.five_hour), ("WEEK", ctx.usage.week)):
         if window.resets_at:
-            env[f"DOGGYBAG_{key}_RESETS_AT"] = str(int(window.resets_at.timestamp()))
+            env[f"WADDLEBAG_{key}_RESETS_AT"] = str(int(window.resets_at.timestamp()))
 
     out(f"🥡 packing up {task.name}: {reason}")
     if cfg.notify:
@@ -152,7 +152,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                 start_new_session=True,  # its own process group, so stopping it stops its children too
             )
         except OSError as e:
-            log.write(f"doggybag: could not start: {e}\n".encode())
+            log.write(f"waddlebag: could not start: {e}\n".encode())
             proc = None
 
         if proc is not None:
@@ -172,7 +172,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                     if stopped:
                         _stop(proc)
             except BaseException:
-                # if doggybag itself is interrupted, do not leave the task running
+                # if waddlebag itself is interrupted, do not leave the task running
                 _stop(proc)
                 raise
 
@@ -209,7 +209,7 @@ def run_cycle(root: Path, only: str | None = None, out=print) -> int:
     cfg = state.load_config(root)
     with single_instance(root) as acquired:
         if not acquired:
-            out("another doggybag run is in progress; skipping")
+            out("another waddlebag run is in progress; skipping")
             return 0
         try:
             usage = fetch_usage(cfg.claude)

@@ -12,7 +12,7 @@ _SCRIPT = [
 ]
 
 
-def notify(message: str, title: str = "doggybag") -> None:
+def notify(message: str, title: str = "waddlebag") -> None:
     if sys.platform != "darwin":
         return
     try:

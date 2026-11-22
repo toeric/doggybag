@@ -8,10 +8,10 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from doggybag import launchd, runner, state  # noqa: E402
-from doggybag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
-from doggybag.tasks import discover, ignored, load_task  # noqa: E402
-from doggybag.usage import FIVE_HOURS, ONE_WEEK, Usage, UsageError, Window, parse_usage  # noqa: E402
+from waddlebag import launchd, runner, state  # noqa: E402
+from waddlebag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
+from waddlebag.tasks import discover, ignored, load_task  # noqa: E402
+from waddlebag.usage import FIVE_HOURS, ONE_WEEK, Usage, UsageError, Window, parse_usage  # noqa: E402
 
 TPE = ZoneInfo("Asia/Taipei")
 NOW = datetime(2026, 11, 22, 15, 0, tzinfo=TPE)
@@ -160,7 +160,7 @@ class Idle(unittest.TestCase):
 
 
 class TaskCase(unittest.TestCase):
-    """A temporary ~/.doggybag plus a helper for writing task files."""
+    """A temporary ~/.waddlebag plus a helper for writing task files."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -322,7 +322,7 @@ class Executing(TaskCase):
         lines = []
         t = self.write(
             f"---\nwhen: idle\nin: {self.work}\n"
-            'run: echo "stdin=$(cat) cwd=$(pwd -P) left=$DOGGYBAG_5H_REMAINING task=$DOGGYBAG_TASK"; exit 3\n'
+            'run: echo "stdin=$(cat) cwd=$(pwd -P) left=$WADDLEBAG_5H_REMAINING task=$WADDLEBAG_TASK"; exit 3\n'
             "---\nInstructions for my agent\n"
         )
         entry = self.execute(t, out=lines.append)
@@ -353,7 +353,7 @@ class Executing(TaskCase):
 
 class Examples(unittest.TestCase):
     def test_every_example_card_is_valid(self):
-        examples = resources.files("doggybag").joinpath("examples")
+        examples = resources.files("waddlebag").joinpath("examples")
         cards = [item for item in examples.iterdir() if item.name.endswith(".md")]
         self.assertGreaterEqual(len(cards), 5)
         for item in cards:
@@ -365,7 +365,7 @@ class Examples(unittest.TestCase):
                 self.assertTrue(t.whens, item.name)
 
     def test_examples_all_have_the_same_shape(self):
-        examples = resources.files("doggybag").joinpath("examples")
+        examples = resources.files("waddlebag").joinpath("examples")
         names = sorted(item.name for item in examples.iterdir() if item.is_file())
         self.assertTrue(all(n.endswith(".md") for n in names), names)
         for item in examples.iterdir():
@@ -382,7 +382,7 @@ class Examples(unittest.TestCase):
     def test_starter_is_switched_off_and_reads_only(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "10-todo-triage.md"
-            p.write_text(resources.files("doggybag").joinpath("examples/todo-triage.md").read_text())
+            p.write_text(resources.files("waddlebag").joinpath("examples/todo-triage.md").read_text())
             t = load_task(p)
             self.assertFalse(t.enabled)
             self.assertEqual(t.command("claude")[-3:], ["Read", "Grep", "Glob"])
@@ -393,7 +393,7 @@ class Schedule(unittest.TestCase):
         data = launchd.build_plist(Path("/tmp/a&b"), 10, "/opt/tools/claude")
         text = launchd.render_plist(data)
         self.assertIn("<integer>600</integer>", text)
-        self.assertIn("/tmp/a&amp;b/logs/doggybag.log", text)
+        self.assertIn("/tmp/a&amp;b/logs/waddlebag.log", text)
         self.assertIn("<false/>", text)
         self.assertIn("/opt/tools", data["EnvironmentVariables"]["PATH"])
 
