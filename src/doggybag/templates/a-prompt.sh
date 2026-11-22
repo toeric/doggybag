@@ -1,10 +1,11 @@
 #!/bin/bash
 # doggybag:
-#   when: 5h.resets_in <= 60m and 5h.remaining >= 30
+#   when: leftover
 #   cooldown: 5h
 #   timeout: 30m
 
-# 範本 A：用 Claude Code 跑一段 prompt。
+# 範本 A：在 script 裡用 Claude Code 跑一段 prompt。
+# 只是要跑一段 prompt 的話，review.md 那種寫法更簡單；需要前後多做幾步時才用 script。
 #
 # doggybag 觸發時沒有人在電腦前，Claude 沒辦法問你「可以嗎」，
 # 所以要用 --allowedTools 事先列出這個 task 可以用的工具。

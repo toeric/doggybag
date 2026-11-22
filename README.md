@@ -4,8 +4,8 @@ English · [繁體中文](README.zh-TW.md)
 
 **Your Claude subscription quota resets whether you used it or not. doggybag runs your own scripts on what's left before it expires.**
 
-1. You put scripts in a folder.
-2. Each script says, in a comment at the top, when it should run.
+1. You put tasks in a folder. A task is a text file with a prompt, or any script.
+2. Each task says at the top when it should run.
 3. doggybag checks your quota every 10 minutes and runs the ones that are due.
 
 doggybag only decides *when*. What runs is up to you: a prompt, a skill, or your own program.
@@ -15,20 +15,30 @@ doggybag only decides *when*. What runs is up to you: a prompt, a skill, or your
 You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
 
 ```bash
-# 1. Install and set up (creates ~/.doggybag and a schedule that checks every 10 minutes)
+# 1. Install and set up
 uv tool install git+https://github.com/toeric/doggybag    # or: pipx install git+https://github.com/toeric/doggybag
 doggybag setup
 
-# 2. Add a task: copy an example into the tasks folder
-cp ~/.doggybag/tasks/examples/a-prompt.sh ~/.doggybag/tasks/10-review.sh
+# 2. Open the first task that setup made for you
+open -e ~/.doggybag/tasks/10-review.md
 
-# 3. Edit it (when to run, and what to run), then switch it on
-open -e ~/.doggybag/tasks/10-review.sh
-chmod +x ~/.doggybag/tasks/10-review.sh
-
-# 4. See what doggybag thinks
+# 3. See what doggybag thinks
 doggybag status
 ```
+
+`setup` creates `~/.doggybag`, installs a schedule that checks every 10 minutes, and writes a first task for you. That task is switched off until you edit it:
+
+```markdown
+---
+when: leftover
+in: ~/path/to/your/repo
+enabled: false
+---
+Review the three most recent commits in this repository.
+List anything that looks risky, and say which file and line it is in.
+```
+
+Change three things: the folder after `in:`, the text of the prompt, and `enabled: false` to `true`. There is nothing to register: **a task is a file in `~/.doggybag/tasks/`.**
 
 `status` tells you, for every task, whether it would run right now and why:
 
@@ -36,60 +46,91 @@ doggybag status
 5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
 week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
-· 10-review.sh
+· 10-review.md
     waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
 ```
 
-That's it. There is nothing to register: **a task is a file in `~/.doggybag/tasks/`.**
+## When to run
 
-## What a task looks like
+Most of the time one word is enough:
 
-The top says when to run. The rest is whatever you want to happen.
+| Write | Runs when |
+|---|---|
+| `when: leftover` | the 5-hour window resets within an hour and at least 30% is left |
+| `when: idle` | nobody has used Claude for an hour |
+| `when: behind` | you are using your weekly quota slower than the week is passing |
+
+You can combine them with `and`, and you can write more than one `when:` line. Any one line is enough to trigger the task.
+
+```yaml
+when: idle and behind
+when: leftover
+```
+
+If the three words don't fit, write the numbers yourself:
+
+| I want to run it… | Write |
+|---|---|
+| in the last 30 minutes of the window, if half is left | `when: 5h.resets_in <= 30m and 5h.remaining >= 50` |
+| after three idle hours | `when: idle >= 3h` |
+| on the last day of the week, if a lot is left | `when: week.resets_in <= 1d and week.remaining >= 40` |
+
+The full list of signals is in the [reference](#reference).
+
+## Two ways to write a task
+
+### A prompt file
+
+The simplest task is a `.md` file. The settings go between the `---` lines, and everything below is the prompt.
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+tools: Read, Grep, Glob
+---
+Review the three most recent commits and list anything risky.
+```
+
+| Setting | Meaning | If you leave it out |
+|---|---|---|
+| `when` | When to run | The task only runs by hand |
+| `in` | The folder Claude works in | The tasks folder |
+| `tools` | What Claude may do without asking. `none` allows nothing | `Read, Grep, Glob` (read and search only) |
+| `model` | Which model to use | Your Claude Code default |
+
+To run one of your Claude Code skills, make the prompt `/my-skill`.
+
+Nobody is there to click "allow" when doggybag runs a task, so Claude can only use the tools listed in `tools`. Add `Edit` and `Write` yourself if the task should change files.
+
+### A script
+
+When you need more than one prompt, use a script in any language. The settings go in a comment at the top, and the file must be executable (`chmod +x`).
 
 ```bash
 #!/bin/bash
 # doggybag:
-#   when: 5h.resets_in <= 60m and 5h.remaining >= 30
+#   when: leftover
 #   cooldown: 6h
 
 cd ~/work/myrepo
+git pull
 claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "Glob"
 ```
 
-### Recipes for "when"
+Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
 
-| I want to run it… | Write |
-|---|---|
-| when the 5-hour window is about to reset with plenty left | `when: 5h.resets_in <= 60m and 5h.remaining >= 30` |
-| when nobody has used Claude for an hour | `when: idle >= 60m` |
-| when I'm using my weekly quota slower than the week is passing | `when: week.behind >= 20` |
-| on the last day of the week, if a lot is left | `when: week.resets_in <= 1d and week.remaining >= 40` |
-| in either of two situations | two `when:` lines, one per situation |
+`~/.doggybag/tasks/examples/` has an example of each: a prompt file, a script that runs a prompt, a script that runs a skill, and a script that calls your own program.
 
-### Managing tasks
+## Managing tasks
 
 | To… | Do this |
 |---|---|
-| add a task | put an executable file in `~/.doggybag/tasks/` |
+| add a task | put a file in `~/.doggybag/tasks/` |
 | remove a task | delete the file |
-| switch a task off for now | `chmod -x` the file |
+| switch a task off for now | set `enabled: false` |
 | change the order | rename the files; doggybag goes through them in filename order |
-| try a task right now | `doggybag run 10-review` (ignores its conditions) |
-
-### Three kinds of task
-
-`doggybag setup` puts one example of each in `~/.doggybag/tasks/examples/`.
-
-| Example | What it runs |
-|---|---|
-| `a-prompt.sh` | A prompt, with `claude -p "..."` |
-| `b-skill.sh` | One of your Claude Code skills, with `claude -p "/my-skill"` |
-| `c-own-program.py` | Any program of your own |
-
-Two things to know:
-
-- **Nobody is there to click "allow".** When doggybag triggers a task you are usually away, so anything Claude was not allowed to do in advance is blocked. List the tools a task may use with `--allowedTools`. The examples allow only reading and searching.
-- **Only the logged-in `claude` command uses your subscription quota.** A program that calls the API with an API key is billed separately.
+| try a task right now | `doggybag run 10-review` (ignores `when` and `enabled`) |
 
 ## The three commands
 
@@ -107,7 +148,15 @@ Two things to know:
 - With several `when:` lines, any one of them is enough.
 - A task with no `when:` never runs automatically. Run it by hand with `doggybag run <task>`.
 - Tasks are checked in filename order and run one at a time.
-- The comment marker can be `#`, `//`, `--` or `;`, so a task can be written in any language.
+- In a script, the comment marker can be `#`, `//`, `--` or `;`.
+
+The three words are short for:
+
+| Word | Same as |
+|---|---|
+| `leftover` | `5h.resets_in <= 60m and 5h.remaining >= 30` |
+| `idle` | `idle >= 60m` |
+| `behind` | `week.behind >= 20` |
 
 `5h` is the 5-hour window and `week` is the weekly limit.
 
@@ -122,10 +171,16 @@ Two things to know:
 `behind` works like this: if 40% of the window's time has passed and you have used 10%, you are 30 behind.
 Durations use `m`, `h` and `d`.
 
+### Settings for every task
+
 | Setting | Default | Meaning |
 |---|---|---|
+| `when` | none | When to run. Can appear more than once |
 | `cooldown` | `5h` | How long before the task can trigger again after a run |
 | `timeout` | `1h` | The task is stopped if it runs longer than this |
+| `enabled` | `true` | Set to `false` to switch the task off |
+
+Prompt files also take `in`, `tools` and `model`, described above.
 
 ### What doggybag gives a task
 
@@ -137,7 +192,7 @@ Durations use `m`, `h` and `d`.
 | `DOGGYBAG_5H_RESETS_AT`, `DOGGYBAG_WEEK_RESETS_AT` | Reset time (epoch seconds) |
 | `DOGGYBAG_LOG` | Path of this run's log file |
 
-A task reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
+A script reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
 
 Task output is written to `~/.doggybag/logs/`.
 

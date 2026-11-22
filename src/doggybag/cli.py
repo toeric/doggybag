@@ -16,6 +16,9 @@ from .tasks import discover
 from .usage import Usage, UsageError, Window, fetch_usage, find_claude
 
 
+STARTER_NAME = "10-review.md"
+
+
 def _window_line(label: str, w: Window, now: datetime) -> str:
     if w.resets_at is None:
         return f"{label}  {w.remaining:>3}% left · no active window"
@@ -49,12 +52,23 @@ def cmd_setup(args) -> int:
         config.write_text(state.DEFAULT_CONFIG, encoding="utf-8")
         print(f"wrote {config}")
 
-    for item in resources.files("doggybag").joinpath("templates").iterdir():
+    first_time = not any(p.is_file() and not p.name.startswith(".") for p in tasks_dir.iterdir())
+    templates = resources.files("doggybag").joinpath("templates")
+    for item in templates.iterdir():
+        if not item.is_file():
+            continue
         target = examples / item.name
         if not target.exists():
             with resources.as_file(item) as src:
                 shutil.copyfile(src, target)  # 不帶執行權限，範例不會被誤跑
     print(f"example tasks are in {examples}")
+
+    starter = tasks_dir / STARTER_NAME
+    if first_time:
+        # 第一次設定時直接給一個可以改的 task，預設是關閉的
+        with resources.as_file(templates.joinpath("review.md")) as src:
+            shutil.copyfile(src, starter)
+        print(f"wrote a first task (switched off): {starter}")
 
     cfg = state.load_config(root)
     claude = find_claude(cfg.claude)
@@ -84,8 +98,12 @@ def cmd_setup(args) -> int:
         print(f"  */{cfg.interval_minutes} * * * * {sys.executable} -m doggybag run")
 
     print()
-    print(f"Next: copy an example into {tasks_dir}, edit it, and `chmod +x` it.")
-    print("Then `doggybag status` shows when it would run.")
+    if starter.exists():
+        print(f"Next: open {starter}")
+        print("  set the folder and what you want Claude to do, then change `enabled: false` to `true`.")
+    else:
+        print(f"Next: add a task to {tasks_dir} (see the examples folder).")
+    print("`doggybag status` shows when each task would run.")
     return 0
 
 
@@ -114,7 +132,7 @@ def cmd_status(args) -> int:
 
     tasks = discover(root / "tasks")
     if not tasks:
-        print(f"no tasks yet. Put an executable script in {root / 'tasks'}")
+        print(f"no tasks yet. Add a .md prompt or an executable script to {root / 'tasks'}")
         return 0
     for task in tasks:
         decision = decide(task, ctx, cfg, root)

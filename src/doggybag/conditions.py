@@ -22,6 +22,13 @@ _PERCENT_SIGNALS = {
 }
 SIGNALS = sorted(_DURATION_SIGNALS | _PERCENT_SIGNALS)
 
+# 常見情況的現成名稱，讓使用者不用自己寫運算式
+PRESETS = {
+    "leftover": "5h.resets_in <= 60m and 5h.remaining >= 30",
+    "idle": "idle >= 60m",
+    "behind": "week.behind >= 20",
+}
+
 _CLAUSE_RE = re.compile(r"^\s*([a-z0-9_.]+)\s*(>=|<=|>|<)\s*(\S+)\s*$", re.I)
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(m|h|d)$", re.I)
 _OPS = {
@@ -90,9 +97,16 @@ class Context:
 def parse_when(text: str) -> list[Clause]:
     clauses = []
     for part in re.split(r"\s+and\s+", text.strip(), flags=re.I):
+        preset = PRESETS.get(part.strip().lower())
+        if preset:
+            clauses.extend(parse_when(preset))
+            continue
         m = _CLAUSE_RE.match(part)
         if not m:
-            raise ConditionError(f"cannot read condition '{part}'")
+            raise ConditionError(
+                f"cannot read condition '{part}' "
+                f"(use {', '.join(PRESETS)}, or something like `5h.remaining >= 30`)"
+            )
         signal = m[1].lower()
         if signal in _DURATION_SIGNALS:
             value: float | timedelta = parse_duration(m[3])

@@ -1,6 +1,6 @@
 #!/bin/bash
 # doggybag:
-#   when: idle >= 60m and week.behind >= 20
+#   when: idle and behind
 #   cooldown: 12h
 #   timeout: 45m
 

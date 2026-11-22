@@ -10,6 +10,7 @@ import fcntl
 import os
 import signal
 import subprocess
+import tempfile
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -20,7 +21,7 @@ from . import state
 from .conditions import Context, evaluate, format_duration
 from .notify import notify
 from .tasks import Task, discover
-from .usage import Usage, UsageError, fetch_usage
+from .usage import Usage, UsageError, fetch_usage, find_claude
 
 EXIT_NOTHING_TO_DO = 75  # script 回報「現在沒事可做」：不算失敗，也不進 cooldown
 WATCH_INTERVAL = 300  # 執行期間每隔幾秒重讀一次額度
@@ -52,8 +53,12 @@ def decide(
         return Decision(False, f"header error: {task.error}")
     if not task.executable:
         return Decision(False, "not executable (chmod +x to enable)")
+    if task.is_prompt and not task.cwd.is_dir():
+        return Decision(False, f"folder not found: {task.cwd} (set `in:` to a folder that exists)")
     if force:
         return Decision(True, "run by hand")
+    if not task.enabled:
+        return Decision(False, "switched off (enabled: false)")
     if not task.whens:
         return Decision(False, "no `when:` condition, only runs by hand")
 
@@ -131,13 +136,19 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         notify(f"Packing up {task.name}")
 
     stopped = None
-    with open(log_path, "wb") as log:
+    with open(log_path, "wb") as log, tempfile.TemporaryFile() as prompt_file:
+        stdin = subprocess.DEVNULL
+        if task.is_prompt:
+            # prompt 走 stdin：不會被當成指令的參數解讀，長度也不受限
+            prompt_file.write(task.prompt.encode("utf-8"))
+            prompt_file.seek(0)
+            stdin = prompt_file
         try:
             proc = subprocess.Popen(
-                [str(task.path)],
-                cwd=task.path.parent,
+                task.command(find_claude(cfg.claude)),
+                cwd=task.cwd,
                 env=env,
-                stdin=subprocess.DEVNULL,
+                stdin=stdin,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # 自己一個 process group，中止時連子程序一起停

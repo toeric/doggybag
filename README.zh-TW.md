@@ -4,8 +4,8 @@
 
 **Claude 訂閱額度不管有沒有用完，時間到就會重置。doggybag 在額度過期前，用剩下的部分跑你自己的 script。**
 
-1. 你把 script 放進一個資料夾。
-2. 每個 script 在開頭的註解裡寫明什麼時候該跑。
+1. 你把 task 放進一個資料夾。task 可以是一個寫著 prompt 的文字檔，或任何 script。
+2. 每個 task 在開頭寫明什麼時候該跑。
 3. doggybag 每 10 分鐘檢查一次額度，條件成立的就跑。
 
 doggybag 只決定「什麼時候」。要跑什麼由你決定：一段 prompt、一個 skill，或你自己的程式。
@@ -15,20 +15,30 @@ doggybag 只決定「什麼時候」。要跑什麼由你決定：一段 prompt�
 需要 macOS、Python 3.11 以上，以及已登入的 [Claude Code](https://claude.com/claude-code)。
 
 ```bash
-# 1. 安裝並設定（會建立 ~/.doggybag，並安裝每 10 分鐘檢查一次的排程）
+# 1. 安裝並設定
 uv tool install git+https://github.com/toeric/doggybag    # 或 pipx install git+https://github.com/toeric/doggybag
 doggybag setup
 
-# 2. 加入一個 task：把範例複製到 tasks 資料夾
-cp ~/.doggybag/tasks/examples/a-prompt.sh ~/.doggybag/tasks/10-review.sh
+# 2. 打開 setup 幫你建好的第一個 task
+open -e ~/.doggybag/tasks/10-review.md
 
-# 3. 編輯它（什麼時候跑、跑什麼），然後啟用
-open -e ~/.doggybag/tasks/10-review.sh
-chmod +x ~/.doggybag/tasks/10-review.sh
-
-# 4. 看 doggybag 怎麼判斷
+# 3. 看 doggybag 怎麼判斷
 doggybag status
 ```
+
+`setup` 會建立 `~/.doggybag`、安裝每 10 分鐘檢查一次的排程，並幫你寫好第一個 task。這個 task 在你編輯之前是關閉的：
+
+```markdown
+---
+when: leftover
+in: ~/path/to/your/repo
+enabled: false
+---
+Review the three most recent commits in this repository.
+List anything that looks risky, and say which file and line it is in.
+```
+
+改三個地方：`in:` 後面的資料夾、prompt 的內容，以及把 `enabled: false` 改成 `true`。不需要註冊任何東西：**task 就是 `~/.doggybag/tasks/` 裡的一個檔案。**
 
 `status` 會告訴你每個 task 現在會不會跑，以及原因：
 
@@ -36,60 +46,91 @@ doggybag status
 5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
 week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
-· 10-review.sh
+· 10-review.md
     waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
 ```
 
-這樣就完成了。不需要註冊任何東西：**task 就是 `~/.doggybag/tasks/` 裡的一個檔案。**
+## 什麼時候跑
 
-## task 長什麼樣子
+大部分情況寫一個詞就夠了：
 
-開頭寫什麼時候跑，其餘是你要做的事。
+| 寫法 | 什麼時候跑 |
+|---|---|
+| `when: leftover` | 5 小時窗口在一小時內重置，而且至少還剩 30% |
+| `when: idle` | 一小時沒有人用 Claude |
+| `when: behind` | 週額度用得比時間過得慢 |
+
+可以用 `and` 組合，也可以寫多行 `when:`。任一行成立就會觸發。
+
+```yaml
+when: idle and behind
+when: leftover
+```
+
+這三個詞不合用時，可以自己寫數字：
+
+| 我想在這個時候跑 | 寫法 |
+|---|---|
+| 窗口最後 30 分鐘，而且還剩一半 | `when: 5h.resets_in <= 30m and 5h.remaining >= 50` |
+| 閒置三小時之後 | `when: idle >= 3h` |
+| 一週的最後一天，而且還剩很多 | `when: week.resets_in <= 1d and week.remaining >= 40` |
+
+完整的訊號列表在[參考](#參考)。
+
+## task 的兩種寫法
+
+### prompt 檔
+
+最簡單的 task 是一個 `.md` 檔。設定寫在兩行 `---` 之間，下面全部是 prompt。
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+tools: Read, Grep, Glob
+---
+Review the three most recent commits and list anything risky.
+```
+
+| 設定 | 意思 | 沒寫的話 |
+|---|---|---|
+| `when` | 什麼時候跑 | 只能手動跑 |
+| `in` | Claude 工作的資料夾 | tasks 資料夾 |
+| `tools` | Claude 不用問就能做的事。`none` 表示都不允許 | `Read, Grep, Glob`（只能讀檔和搜尋） |
+| `model` | 用哪個模型 | 你的 Claude Code 預設值 |
+
+要跑你自己的 Claude Code skill，把 prompt 寫成 `/my-skill` 就可以。
+
+doggybag 跑 task 時沒有人可以按「允許」，所以 Claude 只能用 `tools` 列出的工具。task 需要改檔案時，自己加上 `Edit` 和 `Write`。
+
+### script
+
+需要的不只是一段 prompt 時，用任何語言寫一個 script。設定寫在開頭的註解裡，檔案要有執行權限（`chmod +x`）。
 
 ```bash
 #!/bin/bash
 # doggybag:
-#   when: 5h.resets_in <= 60m and 5h.remaining >= 30
+#   when: leftover
 #   cooldown: 6h
 
 cd ~/work/myrepo
+git pull
 claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "Glob"
 ```
 
-### 「when」的常用寫法
+只有已登入的 `claude` 指令會用到訂閱額度。用 API key 呼叫 API 的程式是另外計費的。
 
-| 我想在這個時候跑 | 寫法 |
-|---|---|
-| 5 小時窗口快重置，而且還剩很多 | `when: 5h.resets_in <= 60m and 5h.remaining >= 30` |
-| 一小時沒有人用 Claude | `when: idle >= 60m` |
-| 週額度用得比時間過得慢 | `when: week.behind >= 20` |
-| 一週的最後一天，而且還剩很多 | `when: week.resets_in <= 1d and week.remaining >= 40` |
-| 兩種情況任一發生 | 寫兩行 `when:`，一行一種情況 |
+`~/.doggybag/tasks/examples/` 裡各有一個範例：prompt 檔、跑 prompt 的 script、跑 skill 的 script，以及呼叫你自己程式的 script。
 
-### 管理 task
+## 管理 task
 
 | 想做的事 | 做法 |
 |---|---|
-| 加入 task | 把可執行檔放進 `~/.doggybag/tasks/` |
+| 加入 task | 把檔案放進 `~/.doggybag/tasks/` |
 | 移除 task | 刪掉檔案 |
-| 暫時停用 | 對檔案下 `chmod -x` |
+| 暫時停用 | 設定 `enabled: false` |
 | 調整順序 | 改檔名，doggybag 依檔名順序檢查 |
-| 立刻試跑 | `doggybag run 10-review`（不看條件） |
-
-### 三種 task
-
-`doggybag setup` 會在 `~/.doggybag/tasks/examples/` 各放一個範例。
-
-| 範例 | 跑什麼 |
-|---|---|
-| `a-prompt.sh` | 一段 prompt，用 `claude -p "..."` |
-| `b-skill.sh` | 你自己的 Claude Code skill，用 `claude -p "/my-skill"` |
-| `c-own-program.py` | 你自己的任何程式 |
-
-有兩件事要知道：
-
-- **沒有人可以按「允許」。** doggybag 觸發 task 時你通常不在電腦前，沒有事先允許的動作會被擋下。用 `--allowedTools` 列出 task 可以用的工具。範例只開放讀檔和搜尋。
-- **只有已登入的 `claude` 指令會用到訂閱額度。** 用 API key 呼叫 API 的程式是另外計費的。
+| 立刻試跑 | `doggybag run 10-review`（不看 `when` 和 `enabled`） |
 
 ## 三個指令
 
@@ -107,7 +148,15 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 - 有多行 `when:` 時，任一行成立就觸發。
 - 沒有 `when:` 的 task 不會自動跑，只能用 `doggybag run <task>` 手動跑。
 - task 依檔名順序檢查，一次只跑一個。
-- 註解符號可以是 `#`、`//`、`--` 或 `;`，所以 task 不限語言。
+- script 的註解符號可以是 `#`、`//`、`--` 或 `;`。
+
+三個詞分別等於：
+
+| 詞 | 等於 |
+|---|---|
+| `leftover` | `5h.resets_in <= 60m and 5h.remaining >= 30` |
+| `idle` | `idle >= 60m` |
+| `behind` | `week.behind >= 20` |
 
 `5h` 是 5 小時窗口，`week` 是週額度。
 
@@ -122,10 +171,16 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 `behind` 的算法：窗口的時間過了 40%，額度只用了 10%，就是落後 30。
 時間的單位是 `m`、`h`、`d`。
 
+### 每個 task 都能用的設定
+
 | 設定 | 預設 | 意思 |
 |---|---|---|
+| `when` | 無 | 什麼時候跑，可以寫多行 |
 | `cooldown` | `5h` | 跑完後多久內不再觸發 |
 | `timeout` | `1h` | 跑超過這個時間就中止 |
+| `enabled` | `true` | 設成 `false` 就停用這個 task |
+
+prompt 檔另外可以用 `in`、`tools`、`model`，說明在上面。
 
 ### doggybag 傳給 task 的資訊
 
@@ -137,7 +192,7 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 | `DOGGYBAG_5H_RESETS_AT`、`DOGGYBAG_WEEK_RESETS_AT` | 重置時間（epoch 秒） |
 | `DOGGYBAG_LOG` | 這次執行的 log 檔路徑 |
 
-task 用 exit code 回報結果：`0` 是完成，`75` 是「現在沒事可做」（不算失敗，也不進 cooldown），其他是失敗。
+script 用 exit code 回報結果：`0` 是完成，`75` 是「現在沒事可做」（不算失敗，也不進 cooldown），其他是失敗。
 
 task 的輸出會寫到 `~/.doggybag/logs/`。
 

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from doggybag import runner, state  # noqa: E402
 from doggybag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
-from doggybag.tasks import discover, parse_header  # noqa: E402
+from doggybag.tasks import Task, _apply, discover, load_task, prompt_settings, script_settings  # noqa: E402
 from doggybag.usage import FIVE_HOURS, ONE_WEEK, Usage, UsageError, Window, parse_usage  # noqa: E402
 
 TPE = ZoneInfo("Asia/Taipei")
@@ -99,30 +99,196 @@ class Conditions(unittest.TestCase):
                 parse_when(text)
 
 
+def parse_header(text):
+    """把 script 開頭的設定套用到一個 Task 上，方便測試。"""
+    task = Task(Path("x.sh"))
+    _apply(task, script_settings(text), ("when", "cooldown", "timeout", "enabled"))
+    return task
+
+
 class Headers(unittest.TestCase):
     def test_shell_header(self):
-        h = parse_header(
+        t = parse_header(
             "#!/bin/bash\n# doggybag:\n#   when: idle >= 60m\n#   when: 5h.remaining >= 50\n"
             "#   cooldown: 6h\n#   timeout: 20m\n\necho hi\n"
         )
-        self.assertEqual(len(h["whens"]), 2)
-        self.assertEqual(h["cooldown"], timedelta(hours=6))
-        self.assertEqual(h["timeout"], timedelta(minutes=20))
+        self.assertEqual(len(t.whens), 2)
+        self.assertEqual(t.cooldown, timedelta(hours=6))
+        self.assertEqual(t.timeout, timedelta(minutes=20))
+        self.assertTrue(t.enabled)
 
     def test_other_comment_styles(self):
-        h = parse_header("// doggybag:\n//   when: idle >= 1h\nconsole.log(1)\n")
-        self.assertEqual(len(h["whens"]), 1)
+        self.assertEqual(len(parse_header("// doggybag:\n//   when: idle >= 1h\nconsole.log(1)\n").whens), 1)
 
     def test_no_header(self):
-        self.assertEqual(parse_header("#!/bin/bash\necho hi\n"), {"whens": []})
+        self.assertEqual(parse_header("#!/bin/bash\necho hi\n").whens, [])
 
     def test_header_stops_at_first_other_line(self):
-        h = parse_header("# doggybag:\n#   when: idle >= 1h\n\n#   when: idle >= 2h\n")
-        self.assertEqual(len(h["whens"]), 1)
+        t = parse_header("# doggybag:\n#   when: idle >= 1h\n\n#   when: idle >= 2h\n")
+        self.assertEqual(len(t.whens), 1)
 
     def test_unknown_key(self):
         with self.assertRaises(ConditionError):
             parse_header("# doggybag:\n#   whenever: idle >= 1h\n")
+
+    def test_enabled_false(self):
+        self.assertFalse(parse_header("# doggybag:\n#   when: idle\n#   enabled: false\n").enabled)
+
+    def test_script_cannot_use_prompt_only_settings(self):
+        with self.assertRaises(ConditionError):
+            parse_header("# doggybag:\n#   tools: Read\n")
+
+
+class Presets(unittest.TestCase):
+    def test_presets_expand(self):
+        self.assertEqual(
+            [str(c) for c in parse_when("leftover")],
+            ["5h.resets_in <= 1h", "5h.remaining >= 30%"],
+        )
+        self.assertEqual([str(c) for c in parse_when("idle")], ["idle >= 1h"])
+        self.assertEqual([str(c) for c in parse_when("behind")], ["week.behind >= 20%"])
+
+    def test_presets_combine_with_and_and_with_expressions(self):
+        self.assertEqual(len(parse_when("idle and behind")), 2)
+        self.assertEqual(len(parse_when("Leftover and week.remaining >= 50")), 3)
+
+    def test_idle_with_operator_is_still_a_plain_condition(self):
+        self.assertEqual(str(parse_when("idle >= 3h")[0]), "idle >= 3h")
+
+    def test_unknown_word_mentions_presets(self):
+        with self.assertRaises(ConditionError) as cm:
+            parse_when("sometimes")
+        self.assertIn("leftover", str(cm.exception))
+
+
+PROMPT_FILE = """---
+# a comment
+when: leftover
+when: idle
+in: {workdir}
+tools: Read, Edit
+model: haiku
+cooldown: 2h
+enabled: false
+---
+Review the latest commits.
+
+Second paragraph.
+"""
+
+
+class PromptTasks(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "tasks").mkdir()
+        self.work = self.root / "repo"
+        self.work.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, text, name="10-review.md"):
+        p = self.root / "tasks" / name
+        p.write_text(text)
+        return load_task(p)
+
+    def test_frontmatter_and_body(self):
+        t = self.write(PROMPT_FILE.format(workdir=self.work))
+        self.assertIsNone(t.error)
+        self.assertTrue(t.is_prompt)
+        self.assertEqual(t.prompt, "Review the latest commits.\n\nSecond paragraph.")
+        self.assertEqual(len(t.whens), 2)
+        self.assertEqual(t.cwd, self.work)
+        self.assertEqual(t.cooldown, timedelta(hours=2))
+        self.assertFalse(t.enabled)
+        self.assertEqual(
+            t.command("/bin/claude"),
+            ["/bin/claude", "-p", "--model", "haiku", "--allowedTools", "Read", "Edit"],
+        )
+
+    def test_defaults_are_read_only_and_no_chmod_needed(self):
+        t = self.write("---\nwhen: idle\n---\nSay hi.\n")
+        self.assertTrue(t.executable)
+        self.assertEqual(t.command("claude"), ["claude", "-p", "--allowedTools", "Read", "Grep", "Glob"])
+        self.assertEqual(t.cwd, self.root / "tasks")
+
+    def test_tools_none(self):
+        t = self.write("---\ntools: none\n---\nSay hi.\n")
+        self.assertEqual(t.command("claude"), ["claude", "-p"])
+
+    def test_tilde_in_folder(self):
+        t = self.write("---\nin: ~/somewhere\n---\nSay hi.\n")
+        self.assertEqual(t.workdir, Path.home() / "somewhere")
+
+    def test_plain_markdown_without_settings_only_runs_by_hand(self):
+        t = self.write("Just a prompt.\n")
+        self.assertIsNone(t.error)
+        self.assertEqual(t.whens, [])
+
+    def test_errors(self):
+        self.assertIn("empty", self.write("---\nwhen: idle\n---\n\n").error)
+        self.assertIn("never closed", self.write("---\nwhen: idle\n").error)
+        self.assertIn("expected `key: value`", self.write("---\nwhen: idle\nSay hi.\n").error)
+        self.assertIn("unknown setting", self.write("---\nwhne: idle\n---\nHi\n").error)
+        self.assertIn("true or false", self.write("---\nenabled: maybe\n---\nHi\n").error)
+
+    def ctx(self):
+        return Context(make_usage(), timedelta(hours=2), NOW)
+
+    def test_switched_off_waits_but_can_be_run_by_hand(self):
+        t = self.write("---\nwhen: idle\nenabled: false\n---\nHi\n")
+        cfg = state.Config(notify=False)
+        d = runner.decide(t, self.ctx(), cfg, self.root)
+        self.assertFalse(d.run)
+        self.assertIn("switched off", d.reason)
+        self.assertTrue(runner.decide(t, self.ctx(), cfg, self.root, force=True).run)
+
+    def test_missing_folder_is_reported_even_by_hand(self):
+        t = self.write("---\nwhen: idle\nin: /no/such/folder\n---\nHi\n")
+        d = runner.decide(t, self.ctx(), state.Config(notify=False), self.root, force=True)
+        self.assertFalse(d.run)
+        self.assertIn("folder not found", d.reason)
+
+    def test_prompt_reaches_the_command_on_stdin_in_the_right_folder(self):
+        # 用一個假的 claude：把收到的參數、所在資料夾和 stdin 印出來
+        fake = self.root / "fake-claude"
+        fake.write_text('#!/bin/sh\necho "args=$*"\necho "cwd=$(pwd -P)"\necho "stdin=$(cat)"\n')
+        fake.chmod(0o755)
+        t = self.write(f"---\nwhen: idle\nin: {self.work}\n---\n- Do the thing\n")
+        cfg = state.Config(notify=False, claude=str(fake))
+        ctx = Context(make_usage(), timedelta(hours=2), runner.now_local())
+        entry = runner.execute(t, ctx, "test", cfg, self.root, lambda s: None)
+        log = Path(entry["log"]).read_text()
+        self.assertEqual(entry["exit"], 0)
+        self.assertIn("args=-p --allowedTools Read Grep Glob", log)
+        self.assertIn(f"cwd={self.work.resolve()}", log)
+        self.assertIn("stdin=- Do the thing", log)
+
+
+class Setup(unittest.TestCase):
+    def test_starter_template_is_valid_and_switched_off(self):
+        from importlib import resources
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "10-review.md"
+            p.write_text(resources.files("doggybag").joinpath("templates/review.md").read_text())
+            t = load_task(p)
+            self.assertIsNone(t.error)
+            self.assertFalse(t.enabled)
+            self.assertEqual(len(t.whens), 1)
+            self.assertEqual(t.tools, ["Read", "Grep", "Glob"])
+
+    def test_script_templates_are_valid(self):
+        from importlib import resources
+
+        for name in ("a-prompt.sh", "b-skill.sh", "c-own-program.py"):
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / name
+                p.write_text(resources.files("doggybag").joinpath(f"templates/{name}").read_text())
+                t = load_task(p)
+                self.assertIsNone(t.error, name)
+                self.assertTrue(t.whens, name)
 
 
 class Idle(unittest.TestCase):
