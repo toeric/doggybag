@@ -19,4 +19,4 @@ doggybag = "doggybag.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-doggybag = ["templates/*"]
+doggybag = ["examples/*"]

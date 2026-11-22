@@ -16,7 +16,8 @@ from .tasks import discover
 from .usage import Usage, UsageError, Window, fetch_usage, find_claude
 
 
-STARTER_NAME = "10-review.md"
+STARTER_EXAMPLE = "todo-triage.md"
+STARTER_NAME = "10-todo-triage.md"
 
 
 def _window_line(label: str, w: Window, now: datetime) -> str:
@@ -53,7 +54,7 @@ def cmd_setup(args) -> int:
         print(f"wrote {config}")
 
     first_time = not any(p.is_file() and not p.name.startswith(".") for p in tasks_dir.iterdir())
-    templates = resources.files("doggybag").joinpath("templates")
+    templates = resources.files("doggybag").joinpath("examples")
     for item in templates.iterdir():
         if not item.is_file():
             continue
@@ -66,7 +67,7 @@ def cmd_setup(args) -> int:
     starter = tasks_dir / STARTER_NAME
     if first_time:
         # 第一次設定時直接給一個可以改的 task，預設是關閉的
-        with resources.as_file(templates.joinpath("review.md")) as src:
+        with resources.as_file(templates.joinpath(STARTER_EXAMPLE)) as src:
             shutil.copyfile(src, starter)
         print(f"wrote a first task (switched off): {starter}")
 
@@ -100,7 +101,7 @@ def cmd_setup(args) -> int:
     print()
     if starter.exists():
         print(f"Next: open {starter}")
-        print("  set the folder and what you want Claude to do, then change `enabled: false` to `true`.")
+        print("  set the folder after `in:`, then change `enabled: false` to `true`.")
     else:
         print(f"Next: add a task to {tasks_dir} (see the examples folder).")
     print("`doggybag status` shows when each task would run.")
@@ -142,7 +143,7 @@ def cmd_status(args) -> int:
         if previous:
             when = datetime.fromtimestamp(previous["ended"]).strftime("%b %d %H:%M")
             how = previous["stopped"] or f"exit {previous['exit']}"
-            print(f"    last run {when} ({how})")
+            print(f"    last run {when} ({how}) · output: {previous.get('log', 'not recorded')}")
     return 0
 
 

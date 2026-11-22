@@ -272,20 +272,32 @@ class Setup(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "10-review.md"
-            p.write_text(resources.files("doggybag").joinpath("templates/review.md").read_text())
+            p.write_text(resources.files("doggybag").joinpath("examples/todo-triage.md").read_text())
             t = load_task(p)
             self.assertIsNone(t.error)
             self.assertFalse(t.enabled)
             self.assertEqual(len(t.whens), 1)
             self.assertEqual(t.tools, ["Read", "Grep", "Glob"])
 
+    def test_prompt_examples_are_valid(self):
+        from importlib import resources
+
+        for name in ("docs-check.md", "write-tests.md", "run-skill.md"):
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / name
+                p.write_text(resources.files("doggybag").joinpath(f"examples/{name}").read_text())
+                t = load_task(p)
+                self.assertIsNone(t.error, name)
+                self.assertTrue(t.whens, name)
+                self.assertTrue(t.prompt, name)
+
     def test_script_templates_are_valid(self):
         from importlib import resources
 
-        for name in ("a-prompt.sh", "b-skill.sh", "c-own-program.py"):
+        for name in ("review-commits.sh", "own-program.py"):
             with tempfile.TemporaryDirectory() as d:
                 p = Path(d) / name
-                p.write_text(resources.files("doggybag").joinpath(f"templates/{name}").read_text())
+                p.write_text(resources.files("doggybag").joinpath(f"examples/{name}").read_text())
                 t = load_task(p)
                 self.assertIsNone(t.error, name)
                 self.assertTrue(t.whens, name)

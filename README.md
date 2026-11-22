@@ -2,57 +2,89 @@
 
 English · [繁體中文](README.zh-TW.md)
 
-**Your Claude subscription quota resets whether you used it or not. doggybag runs your own scripts on what's left before it expires.**
+**Your Claude subscription quota resets whether you used it or not. doggybag spends what's left on jobs you choose, before it expires.**
 
-1. You put tasks in a folder. A task is a text file with a prompt, or any script.
-2. Each task says at the top when it should run.
-3. doggybag checks your quota every 10 minutes and runs the ones that are due.
+## What it looks like
 
-doggybag only decides *when*. What runs is up to you: a prompt, a skill, or your own program.
-
-## Quick start
-
-You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
-
-```bash
-# 1. Install and set up
-uv tool install git+https://github.com/toeric/doggybag    # or: pipx install git+https://github.com/toeric/doggybag
-doggybag setup
-
-# 2. Open the first task that setup made for you
-open -e ~/.doggybag/tasks/10-review.md
-
-# 3. See what doggybag thinks
-doggybag status
-```
-
-`setup` creates `~/.doggybag`, installs a schedule that checks every 10 minutes, and writes a first task for you. That task is switched off until you edit it:
+A job is one text file. This is a complete one:
 
 ```markdown
 ---
 when: leftover
-in: ~/path/to/your/repo
-enabled: false
+in: ~/work/myrepo
 ---
-Review the three most recent commits in this repository.
-List anything that looks risky, and say which file and line it is in.
+Find the TODO and FIXME comments in this repository.
+Pick the five that are most worth fixing.
 ```
 
-Change three things: the folder after `in:`, the text of the prompt, and `enabled: false` to `true`. There is nothing to register: **a task is a file in `~/.doggybag/tasks/`.**
+It says: *when my quota is about to reset with some left over, go to this folder and do this.*
 
-`status` tells you, for every task, whether it would run right now and why:
+doggybag checks your quota every 10 minutes. When the moment comes it hands the text to Claude Code, and saves the answer to a file. You don't have to be at your computer.
+
+## Get started
+
+You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
+
+**1. Install**
+
+```bash
+uv tool install git+https://github.com/toeric/doggybag    # or: pipx install git+https://github.com/toeric/doggybag
+doggybag setup
+```
+
+`setup` creates the folder `~/.doggybag/tasks/` and puts a first job in it, the one shown above. It is switched off until you edit it.
+
+**2. Edit the first job**
+
+```bash
+open -e ~/.doggybag/tasks/10-todo-triage.md
+```
+
+Change the folder after `in:` to one of your own projects, and change `enabled: false` to `true`.
+
+**3. Check**
+
+```bash
+doggybag status
+```
 
 ```text
 5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
 week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
-· 10-review.md
+· 10-todo-triage.md
     waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
 ```
 
+That's all. It will run by itself when the conditions hold. To see it work right now, run `doggybag run 10-todo-triage`.
+
+## Example jobs
+
+`setup` also copies these into `~/.doggybag/tasks/examples/`. To use one, copy it into `~/.doggybag/tasks/` and set the folder after `in:`.
+
+| Example | What it does | Runs when | Changes your files? |
+|---|---|---|---|
+| [todo-triage.md](src/doggybag/examples/todo-triage.md) | Lists the five TODO comments most worth fixing | quota is about to reset with some left | No |
+| [docs-check.md](src/doggybag/examples/docs-check.md) | Finds places where the README no longer matches the code | you are behind on the week | No |
+| [write-tests.md](src/doggybag/examples/write-tests.md) | Writes tests for the least-tested file | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
+| [run-skill.md](src/doggybag/examples/run-skill.md) | Runs one of your own Claude Code skills | nobody has used Claude for an hour | Depends on the skill |
+| [review-commits.sh](src/doggybag/examples/review-commits.sh) | A script: collects the latest commits, asks Claude to review them, saves a report | quota is about to reset with some left | No |
+| [own-program.py](src/doggybag/examples/own-program.py) | A script that calls a program of your own | the last day of the week, with a lot left | Up to you |
+
+## Where the answer goes
+
+Everything a job prints is saved in `~/.doggybag/logs/`. `doggybag status` shows the file for each job's last run:
+
+```text
+· 10-todo-triage.md
+    last run Nov 22 18:50 (exit 0) · output: ~/.doggybag/logs/10-todo-triage-20261122-185043.log
+```
+
+You also get a desktop notification when a job starts and when it finishes.
+
 ## When to run
 
-Most of the time one word is enough:
+One word is usually enough:
 
 | Write | Runs when |
 |---|---|
@@ -60,7 +92,7 @@ Most of the time one word is enough:
 | `when: idle` | nobody has used Claude for an hour |
 | `when: behind` | you are using your weekly quota slower than the week is passing |
 
-You can combine them with `and`, and you can write more than one `when:` line. Any one line is enough to trigger the task.
+Combine them with `and`. With more than one `when:` line, any one line is enough.
 
 ```yaml
 when: idle and behind
@@ -75,37 +107,20 @@ If the three words don't fit, write the numbers yourself:
 | after three idle hours | `when: idle >= 3h` |
 | on the last day of the week, if a lot is left | `when: week.resets_in <= 1d and week.remaining >= 40` |
 
-The full list of signals is in the [reference](#reference).
+## What Claude is allowed to do
 
-## Two ways to write a task
+Nobody is there to click "allow" when a job runs, so Claude can only use the tools the job lists.
 
-### A prompt file
-
-The simplest task is a `.md` file. The settings go between the `---` lines, and everything below is the prompt.
-
-```markdown
----
-when: leftover
-in: ~/work/myrepo
-tools: Read, Grep, Glob
----
-Review the three most recent commits and list anything risky.
+```yaml
+tools: Read, Grep, Glob                 # the default: read and search only
+tools: Read, Grep, Glob, Edit, Write    # may also change files
 ```
 
-| Setting | Meaning | If you leave it out |
-|---|---|---|
-| `when` | When to run | The task only runs by hand |
-| `in` | The folder Claude works in | The tasks folder |
-| `tools` | What Claude may do without asking. `none` allows nothing | `Read, Grep, Glob` (read and search only) |
-| `model` | Which model to use | Your Claude Code default |
+Leave `tools:` out and the job can only read.
 
-To run one of your Claude Code skills, make the prompt `/my-skill`.
+## Scripts
 
-Nobody is there to click "allow" when doggybag runs a task, so Claude can only use the tools listed in `tools`. Add `Edit` and `Write` yourself if the task should change files.
-
-### A script
-
-When you need more than one prompt, use a script in any language. The settings go in a comment at the top, and the file must be executable (`chmod +x`).
+When one prompt is not enough, a job can be a script in any language. Put the settings in a comment at the top and make the file executable (`chmod +x`).
 
 ```bash
 #!/bin/bash
@@ -114,23 +129,20 @@ When you need more than one prompt, use a script in any language. The settings g
 #   cooldown: 6h
 
 cd ~/work/myrepo
-git pull
-claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "Glob"
+git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/review.md
 ```
 
 Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
 
-`~/.doggybag/tasks/examples/` has an example of each: a prompt file, a script that runs a prompt, a script that runs a skill, and a script that calls your own program.
-
-## Managing tasks
+## Managing jobs
 
 | To… | Do this |
 |---|---|
-| add a task | put a file in `~/.doggybag/tasks/` |
-| remove a task | delete the file |
-| switch a task off for now | set `enabled: false` |
+| add a job | put a file in `~/.doggybag/tasks/` |
+| remove a job | delete the file |
+| switch a job off for now | set `enabled: false` |
 | change the order | rename the files; doggybag goes through them in filename order |
-| try a task right now | `doggybag run 10-review` (ignores `when` and `enabled`) |
+| try a job right now | `doggybag run 10-todo-triage` (ignores `when` and `enabled`) |
 
 ## The three commands
 
@@ -142,12 +154,15 @@ Only the logged-in `claude` command uses your subscription quota. A program that
 
 ## Reference
 
+The details, for when you need them. In the code and the commands a job is called a *task*.
+
 ### Conditions
 
 - Conditions joined by `and` on one line must all hold.
 - With several `when:` lines, any one of them is enough.
 - A task with no `when:` never runs automatically. Run it by hand with `doggybag run <task>`.
 - Tasks are checked in filename order and run one at a time.
+- A `.md` file is a prompt for Claude Code. Any other file is run as a script and must be executable.
 - In a script, the comment marker can be `#`, `//`, `--` or `;`.
 
 The three words are short for:
@@ -180,7 +195,13 @@ Durations use `m`, `h` and `d`.
 | `timeout` | `1h` | The task is stopped if it runs longer than this |
 | `enabled` | `true` | Set to `false` to switch the task off |
 
-Prompt files also take `in`, `tools` and `model`, described above.
+Prompt files (`.md`) also take:
+
+| Setting | Meaning | If you leave it out |
+|---|---|---|
+| `in` | The folder Claude works in | The tasks folder |
+| `tools` | What Claude may do without asking. `none` allows nothing | `Read, Grep, Glob` |
+| `model` | Which model to use | Your Claude Code default |
 
 ### What doggybag gives a task
 

@@ -2,57 +2,89 @@
 
 [English](README.md) · 繁體中文
 
-**Claude 訂閱額度不管有沒有用完，時間到就會重置。doggybag 在額度過期前，用剩下的部分跑你自己的 script。**
+**Claude 訂閱額度不管有沒有用完，時間到就會重置。doggybag 在額度過期前，把剩下的部分用在你指定的工作上。**
 
-1. 你把 task 放進一個資料夾。task 可以是一個寫著 prompt 的文字檔，或任何 script。
-2. 每個 task 在開頭寫明什麼時候該跑。
-3. doggybag 每 10 分鐘檢查一次額度，條件成立的就跑。
+## 它長什麼樣子
 
-doggybag 只決定「什麼時候」。要跑什麼由你決定：一段 prompt、一個 skill，或你自己的程式。
-
-## 快速開始
-
-需要 macOS、Python 3.11 以上，以及已登入的 [Claude Code](https://claude.com/claude-code)。
-
-```bash
-# 1. 安裝並設定
-uv tool install git+https://github.com/toeric/doggybag    # 或 pipx install git+https://github.com/toeric/doggybag
-doggybag setup
-
-# 2. 打開 setup 幫你建好的第一個 task
-open -e ~/.doggybag/tasks/10-review.md
-
-# 3. 看 doggybag 怎麼判斷
-doggybag status
-```
-
-`setup` 會建立 `~/.doggybag`、安裝每 10 分鐘檢查一次的排程，並幫你寫好第一個 task。這個 task 在你編輯之前是關閉的：
+一件工作就是一個文字檔。下面是一個完整的例子：
 
 ```markdown
 ---
 when: leftover
-in: ~/path/to/your/repo
-enabled: false
+in: ~/work/myrepo
 ---
-Review the three most recent commits in this repository.
-List anything that looks risky, and say which file and line it is in.
+Find the TODO and FIXME comments in this repository.
+Pick the five that are most worth fixing.
 ```
 
-改三個地方：`in:` 後面的資料夾、prompt 的內容，以及把 `enabled: false` 改成 `true`。不需要註冊任何東西：**task 就是 `~/.doggybag/tasks/` 裡的一個檔案。**
+它的意思是：**額度快重置而且還有剩的時候，到這個資料夾做這件事。**
 
-`status` 會告訴你每個 task 現在會不會跑，以及原因：
+doggybag 每 10 分鐘檢查一次額度。時機到了，它把這段文字交給 Claude Code，再把回答存成檔案。你不需要在電腦前。
+
+## 開始使用
+
+需要 macOS、Python 3.11 以上，以及已登入的 [Claude Code](https://claude.com/claude-code)。
+
+**1. 安裝**
+
+```bash
+uv tool install git+https://github.com/toeric/doggybag    # 或 pipx install git+https://github.com/toeric/doggybag
+doggybag setup
+```
+
+`setup` 會建立 `~/.doggybag/tasks/` 資料夾，並放進第一件工作，就是上面那個例子。在你編輯之前它是關閉的。
+
+**2. 編輯第一件工作**
+
+```bash
+open -e ~/.doggybag/tasks/10-todo-triage.md
+```
+
+把 `in:` 後面的資料夾改成你自己的專案，再把 `enabled: false` 改成 `true`。
+
+**3. 確認**
+
+```bash
+doggybag status
+```
 
 ```text
 5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
 week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
-· 10-review.md
+· 10-todo-triage.md
     waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
 ```
 
+這樣就完成了，條件成立時它會自己跑。想馬上看到結果，執行 `doggybag run 10-todo-triage`。
+
+## 範例
+
+`setup` 也會把這些範例複製到 `~/.doggybag/tasks/examples/`。要用哪一個，就把它複製到 `~/.doggybag/tasks/`，再改 `in:` 後面的資料夾。
+
+| 範例 | 做什麼 | 什麼時候跑 | 會改你的檔案嗎 |
+|---|---|---|---|
+| [todo-triage.md](src/doggybag/examples/todo-triage.md) | 列出最值得修的五個 TODO 註解 | 額度快重置而且還有剩 | 不會 |
+| [docs-check.md](src/doggybag/examples/docs-check.md) | 找出 README 和程式碼不一致的地方 | 這週的額度用得比較慢 | 不會 |
+| [write-tests.md](src/doggybag/examples/write-tests.md) | 幫測試最少的檔案寫測試 | 一小時沒人用 Claude，而且這週用得比較慢 | 會，只改 tests 資料夾 |
+| [run-skill.md](src/doggybag/examples/run-skill.md) | 跑你自己的 Claude Code skill | 一小時沒人用 Claude | 看 skill 的內容 |
+| [review-commits.sh](src/doggybag/examples/review-commits.sh) | script：整理最近的 commit，請 Claude 檢查，存成報告 | 額度快重置而且還有剩 | 不會 |
+| [own-program.py](src/doggybag/examples/own-program.py) | script：呼叫你自己的程式 | 一週的最後一天，而且還剩很多 | 由你決定 |
+
+## 結果在哪裡
+
+工作印出的所有內容都存在 `~/.doggybag/logs/`。`doggybag status` 會列出每件工作上次執行的檔案：
+
+```text
+· 10-todo-triage.md
+    last run Nov 22 18:50 (exit 0) · output: ~/.doggybag/logs/10-todo-triage-20261122-185043.log
+```
+
+工作開始和結束時，你也會收到桌面通知。
+
 ## 什麼時候跑
 
-大部分情況寫一個詞就夠了：
+通常寫一個詞就夠了：
 
 | 寫法 | 什麼時候跑 |
 |---|---|
@@ -60,7 +92,7 @@ week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 | `when: idle` | 一小時沒有人用 Claude |
 | `when: behind` | 週額度用得比時間過得慢 |
 
-可以用 `and` 組合，也可以寫多行 `when:`。任一行成立就會觸發。
+可以用 `and` 組合。有多行 `when:` 時，任一行成立就會跑。
 
 ```yaml
 when: idle and behind
@@ -75,37 +107,20 @@ when: leftover
 | 閒置三小時之後 | `when: idle >= 3h` |
 | 一週的最後一天，而且還剩很多 | `when: week.resets_in <= 1d and week.remaining >= 40` |
 
-完整的訊號列表在[參考](#參考)。
+## Claude 可以做什麼
 
-## task 的兩種寫法
+工作執行時沒有人可以按「允許」，所以 Claude 只能用這件工作列出的工具。
 
-### prompt 檔
-
-最簡單的 task 是一個 `.md` 檔。設定寫在兩行 `---` 之間，下面全部是 prompt。
-
-```markdown
----
-when: leftover
-in: ~/work/myrepo
-tools: Read, Grep, Glob
----
-Review the three most recent commits and list anything risky.
+```yaml
+tools: Read, Grep, Glob                 # 預設：只能讀檔和搜尋
+tools: Read, Grep, Glob, Edit, Write    # 也可以改檔案
 ```
 
-| 設定 | 意思 | 沒寫的話 |
-|---|---|---|
-| `when` | 什麼時候跑 | 只能手動跑 |
-| `in` | Claude 工作的資料夾 | tasks 資料夾 |
-| `tools` | Claude 不用問就能做的事。`none` 表示都不允許 | `Read, Grep, Glob`（只能讀檔和搜尋） |
-| `model` | 用哪個模型 | 你的 Claude Code 預設值 |
+沒寫 `tools:` 的工作只能讀。
 
-要跑你自己的 Claude Code skill，把 prompt 寫成 `/my-skill` 就可以。
+## script
 
-doggybag 跑 task 時沒有人可以按「允許」，所以 Claude 只能用 `tools` 列出的工具。task 需要改檔案時，自己加上 `Edit` 和 `Write`。
-
-### script
-
-需要的不只是一段 prompt 時，用任何語言寫一個 script。設定寫在開頭的註解裡，檔案要有執行權限（`chmod +x`）。
+一段 prompt 不夠用時，工作也可以是任何語言的 script。設定寫在開頭的註解裡，檔案要有執行權限（`chmod +x`）。
 
 ```bash
 #!/bin/bash
@@ -114,23 +129,20 @@ doggybag 跑 task 時沒有人可以按「允許」，所以 Claude 只能用 `t
 #   cooldown: 6h
 
 cd ~/work/myrepo
-git pull
-claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "Glob"
+git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/review.md
 ```
 
 只有已登入的 `claude` 指令會用到訂閱額度。用 API key 呼叫 API 的程式是另外計費的。
 
-`~/.doggybag/tasks/examples/` 裡各有一個範例：prompt 檔、跑 prompt 的 script、跑 skill 的 script，以及呼叫你自己程式的 script。
-
-## 管理 task
+## 管理工作
 
 | 想做的事 | 做法 |
 |---|---|
-| 加入 task | 把檔案放進 `~/.doggybag/tasks/` |
-| 移除 task | 刪掉檔案 |
+| 加入工作 | 把檔案放進 `~/.doggybag/tasks/` |
+| 移除工作 | 刪掉檔案 |
 | 暫時停用 | 設定 `enabled: false` |
 | 調整順序 | 改檔名，doggybag 依檔名順序檢查 |
-| 立刻試跑 | `doggybag run 10-review`（不看 `when` 和 `enabled`） |
+| 立刻試跑 | `doggybag run 10-todo-triage`（不看 `when` 和 `enabled`） |
 
 ## 三個指令
 
@@ -142,12 +154,15 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 
 ## 參考
 
+需要時再查的細節。程式和指令裡把一件工作稱為 task。
+
 ### 條件
 
 - 同一行用 `and` 連接的條件要全部成立。
 - 有多行 `when:` 時，任一行成立就觸發。
 - 沒有 `when:` 的 task 不會自動跑，只能用 `doggybag run <task>` 手動跑。
 - task 依檔名順序檢查，一次只跑一個。
+- `.md` 檔是給 Claude Code 的 prompt。其他檔案會當成 script 執行，需要有執行權限。
 - script 的註解符號可以是 `#`、`//`、`--` 或 `;`。
 
 三個詞分別等於：
@@ -180,7 +195,13 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 | `timeout` | `1h` | 跑超過這個時間就中止 |
 | `enabled` | `true` | 設成 `false` 就停用這個 task |
 
-prompt 檔另外可以用 `in`、`tools`、`model`，說明在上面。
+prompt 檔（`.md`）另外可以用：
+
+| 設定 | 意思 | 沒寫的話 |
+|---|---|---|
+| `in` | Claude 工作的資料夾 | tasks 資料夾 |
+| `tools` | Claude 不用問就能做的事。`none` 表示都不允許 | `Read, Grep, Glob` |
+| `model` | 用哪個模型 | 你的 Claude Code 預設值 |
 
 ### doggybag 傳給 task 的資訊
 
