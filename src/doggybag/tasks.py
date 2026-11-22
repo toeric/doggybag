@@ -1,4 +1,4 @@
-"""找出 tasks/ 裡的 task。一個 `.md` 檔就是一個 task，格式只有一種：
+"""Find the tasks in tasks/. One `.md` file is one task, and there is only one format:
 
     ---
     when: leftover
@@ -6,8 +6,8 @@
     ---
     Find the TODO comments and pick the five most worth fixing.
 
-doggybag 在 `when` 成立時，到 `in` 這個資料夾，把內文交給 `run` 的指令。
-沒寫 `run` 就是交給 Claude Code。
+When `when` holds, doggybag goes to the `in` folder and hands the body to the `run` command.
+Without `run`, the body goes to Claude Code.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from .conditions import Clause, ConditionError, parse_duration, parse_when
 
 DEFAULT_COOLDOWN = timedelta(hours=5)
 DEFAULT_TIMEOUT = timedelta(hours=1)
-# 交給 Claude 時預設只能讀檔和搜尋；要改檔案得自己在 tools: 加上
+# Claude may only read and search by default; changing files has to be allowed with tools:
 DEFAULT_TOOLS = ["Read", "Grep", "Glob"]
 
 _ITEM_RE = re.compile(r"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.*?)\s*$", re.I)
@@ -51,9 +51,9 @@ class Task:
         return self.workdir or self.path.parent
 
     def command(self, claude: str | None) -> list[str]:
-        """要執行的指令。內文一律從 stdin 傳入，不放在參數裡。"""
+        """The command to execute. The body always arrives on stdin, never as an argument."""
         if self.run:
-            # 交給 shell，使用者可以寫 ~、管線和參數
+            # Run through the shell so users can write ~, pipes and arguments
             return ["/bin/sh", "-c", self.run]
         cmd = [claude or "claude", "-p"]
         if self.model:
@@ -98,7 +98,7 @@ def _apply(task: Task, items: list[tuple[str, str]]) -> None:
 
 
 def split_card(text: str) -> tuple[list[tuple[str, str]], str]:
-    """把檔案拆成 (設定的 key: value, 內文)。沒有設定區塊也可以。"""
+    """Split a file into (key: value settings, body). The settings block is optional."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return [], text.strip()
@@ -142,10 +142,10 @@ def _files(tasks_dir: Path) -> list[Path]:
 
 
 def discover(tasks_dir: Path) -> list[Task]:
-    """tasks/ 第一層的 .md 檔，依檔名排序。子資料夾（例如 examples/）不會被掃描。"""
+    """The .md files directly inside tasks/, in filename order. Subfolders such as examples/ are not scanned."""
     return [load_task(p) for p in _files(tasks_dir) if p.suffix.lower() == ".md"]
 
 
 def ignored(tasks_dir: Path) -> list[Path]:
-    """tasks/ 裡不是 .md 的檔案。它們不會被執行，status 會提醒使用者。"""
+    """Files in tasks/ that are not .md. They are never run, and status points them out."""
     return [p for p in _files(tasks_dir) if p.suffix.lower() != ".md"]

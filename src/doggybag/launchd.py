@@ -1,4 +1,4 @@
-"""macOS 排程：用 launchd 定時執行 `doggybag run`。"""
+"""Scheduling on macOS: launchd runs `doggybag run` on a timer."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def is_installed() -> bool:
 
 
 def build_plist(root: Path, interval_minutes: int, claude: str | None) -> dict:
-    # launchd 的 PATH 很短，task 裡的 claude 和其他工具會找不到，所以把現在的 PATH 帶過去
+    # launchd's PATH is short and tasks would not find claude or other tools, so pass the current PATH along
     path_dirs = os.environ.get("PATH", "/usr/bin:/bin").split(os.pathsep)
     if claude:
         claude_dir = str(Path(claude).parent)
@@ -59,7 +59,7 @@ def _xml(value, indent: str = "  ") -> str:
 
 
 def render_plist(data: dict) -> str:
-    """自己產生 plist。不用 plistlib，因為它依賴 expat，在某些 Homebrew Python 上載入會失敗。"""
+    """Render the plist by hand. plistlib needs expat, which fails to load on some Homebrew Pythons."""
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
@@ -78,7 +78,7 @@ def install(root: Path, interval_minutes: int, claude: str | None) -> None:
     (root / "logs").mkdir(parents=True, exist_ok=True)
     path.write_text(render_plist(build_plist(root, interval_minutes, claude)), encoding="utf-8")
     domain = f"gui/{os.getuid()}"
-    _launchctl("bootout", f"{domain}/{LABEL}")  # 已經載入過就先卸載，失敗可以忽略
+    _launchctl("bootout", f"{domain}/{LABEL}")  # unload a previous copy first; failure here is fine
     result = _launchctl("bootstrap", domain, str(path))
     if result.returncode != 0:
         raise RuntimeError(f"launchctl could not load the schedule: {result.stderr.strip()}")

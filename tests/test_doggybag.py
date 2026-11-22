@@ -17,7 +17,7 @@ TPE = ZoneInfo("Asia/Taipei")
 NOW = datetime(2026, 11, 22, 15, 0, tzinfo=TPE)
 QUIET = state.Config(notify=False)
 
-# 2026-11-22 在 Claude Code 2.1.330 實際取得的輸出
+# real output captured on 2026-11-22 from Claude Code 2.1.330
 REAL_OUTPUT = """You are currently using your subscription to power your Claude Code usage
 
 Current session: 23% used · resets Nov 22 at 6pm (Asia/Taipei)
@@ -63,7 +63,7 @@ class ParseUsage(unittest.TestCase):
             parse_usage("Please log in", NOW)
 
     def test_behind(self):
-        # 5 小時窗口剩 3 小時：時間過了 40%，用了 23% → 落後 17
+        # 3 hours left in the 5-hour window: 40% of the time gone, 23% used -> 17 behind
         self.assertAlmostEqual(make_usage().five_hour.behind(NOW), 17.0)
 
 
@@ -73,7 +73,7 @@ class Conditions(unittest.TestCase):
 
     def test_and(self):
         clauses = parse_when("5h.resets_in <= 60m and 5h.remaining >= 30")
-        self.assertFalse(evaluate(clauses, self.ctx())[0])  # 還有 3 小時
+        self.assertFalse(evaluate(clauses, self.ctx())[0])  # still 3 hours to go
         self.assertTrue(evaluate(clauses, self.ctx(five_left=timedelta(minutes=40)))[0])
         self.assertFalse(
             evaluate(clauses, self.ctx(five_left=timedelta(minutes=40), five_used=80))[0]
@@ -81,7 +81,7 @@ class Conditions(unittest.TestCase):
 
     def test_idle_and_behind(self):
         clauses = parse_when("idle >= 60m and week.behind >= 10")
-        # 週額度剩 6 天：時間過了約 14%，用了 3% → 落後約 11
+        # 6 days left in the week: about 14% of the time gone, 3% used -> about 11 behind
         self.assertTrue(evaluate(clauses, self.ctx(idle=timedelta(hours=2)))[0])
         self.assertFalse(evaluate(clauses, self.ctx(idle=timedelta(minutes=10)))[0])
 
@@ -128,12 +128,12 @@ class Idle(unittest.TestCase):
             self.assertEqual(state.update_idle(root, make_usage(), NOW), timedelta(0))
             later = NOW + timedelta(minutes=30)
             self.assertEqual(state.update_idle(root, make_usage(), later), timedelta(minutes=30))
-            # 用量增加 → 閒置歸零
+            # usage went up -> idle resets to zero
             busy = NOW + timedelta(minutes=40)
             self.assertEqual(state.update_idle(root, make_usage(five_used=25), busy), timedelta(0))
 
     def test_reset_time_wobble_is_not_a_new_window(self):
-        # 同一個窗口，reset 時間從 6:00pm 變成 5:59pm，不應該被當成有人在用
+        # same window, reset time moves from 6:00pm to 5:59pm: must not count as activity
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             state.update_idle(root, make_usage(), NOW)
@@ -160,7 +160,7 @@ class Idle(unittest.TestCase):
 
 
 class TaskCase(unittest.TestCase):
-    """提供一個暫時的 ~/.doggybag 和寫 task 檔的工具。"""
+    """A temporary ~/.doggybag plus a helper for writing task files."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -306,7 +306,7 @@ class Executing(TaskCase):
         return runner.execute(task, self.live_ctx(), "test", cfg, self.root, out or (lambda s: None))
 
     def test_body_reaches_claude_on_stdin_in_the_right_folder(self):
-        # 用一個假的 claude：把收到的參數、所在資料夾和 stdin 印出來
+        # a fake claude that prints its arguments, working folder and stdin
         fake = self.root / "fake-claude"
         fake.write_text('#!/bin/sh\necho "args=$*"\necho "cwd=$(pwd -P)"\necho "stdin=$(cat)"\n')
         fake.chmod(0o755)
@@ -376,7 +376,7 @@ class Examples(unittest.TestCase):
             self.assertEqual(lines[3], "in: ~/path/to/your/repo", item.name)
             closing = lines.index("---", 1)
             self.assertEqual(lines[closing - 1], "enabled: false", item.name)
-            # 設定區塊裡除了第一行的說明，不再有其他註解或空行
+            # apart from the first description line, the settings block has no comments or blank lines
             self.assertTrue(all(l and not l.startswith("#") for l in lines[2:closing]), item.name)
 
     def test_starter_is_switched_off_and_reads_only(self):

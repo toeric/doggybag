@@ -1,6 +1,6 @@
-"""觸發條件的解析與判斷。
+"""Parse and evaluate trigger conditions.
 
-一行 `when:` 是用 `and` 串起來的幾個子句；一個 task 有多行 `when:` 時，任一行成立就觸發。
+One `when:` line is a list of clauses joined by `and`. With several `when:` lines, any one line triggers the task.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ _PERCENT_SIGNALS = {
 }
 SIGNALS = sorted(_DURATION_SIGNALS | _PERCENT_SIGNALS)
 
-# 常見情況的現成名稱，讓使用者不用自己寫運算式
+# ready-made names for the common cases, so users need not write expressions
 PRESETS = {
     "leftover": "5h.resets_in <= 60m and 5h.remaining >= 30",
     "idle": "idle >= 60m",
@@ -126,7 +126,7 @@ def _show(value: float | timedelta) -> str:
 
 
 def evaluate(clauses: list[Clause], ctx: Context) -> tuple[bool, str]:
-    """回傳 (是否成立, 說明)。說明會列出每個子句目前的實際值。"""
+    """Return (holds, explanation). The explanation lists the current value of every clause."""
     ok = True
     parts = []
     for c in clauses:

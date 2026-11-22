@@ -1,7 +1,5 @@
 # doggybag 🥡
 
-English · [繁體中文](README.zh-TW.md)
-
 **Your Claude subscription quota resets whether you used it or not. doggybag spends what's left on jobs you choose, before it expires.**
 
 ## What it looks like

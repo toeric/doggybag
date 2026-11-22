@@ -1,4 +1,4 @@
-"""doggybag 的本機狀態：設定、閒置追蹤、執行紀錄。全部放在 ~/.doggybag/。"""
+"""doggybag's local state: settings, idle tracking and the run log. All of it lives in ~/.doggybag/."""
 
 from __future__ import annotations
 
@@ -61,10 +61,10 @@ def _read_json(path: Path) -> dict:
 
 
 def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
-    """記下這次的用量，回傳「多久沒有人消耗額度」。
+    """Record this usage sample and return how long nobody has used quota.
 
-    doggybag 只在每次檢查時看得到用量，所以閒置時間是從「上一次看到用量增加」算起。
-    用量的解析度是 1%，很小的消耗看不出來。
+    doggybag only sees usage when it checks, so idle time is measured from the last time it saw usage go up.
+    Usage has 1% resolution, so very small amounts of use are invisible.
     """
     path = root / "state.json"
     state = _read_json(path)
@@ -74,15 +74,15 @@ def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
     active = prev is None
     if prev is not None:
         prev_reset = prev.get("five_reset")
-        # /usage 顯示的 reset 時間會有一分鐘左右的誤差（同一個窗口有時顯示 6pm、有時 5:59pm），
-        # 所以差距夠大才算是新的窗口
+        # The reset time printed by /usage wobbles by about a minute (6pm, then 5:59pm, for the same window),
+        # so only a large difference counts as a new window
         new_window = five_reset is not None and (
             prev_reset is None or abs(five_reset - prev_reset) > RESET_JITTER_SECONDS
         )
         active = (
             usage.week.used > prev["week_used"]
             or usage.five_hour.used > prev["five_used"]
-            # 新的 5 小時窗口只會因為有人送出訊息而開始
+            # a new 5-hour window only starts because somebody sent a message
             or (new_window and usage.five_hour.used > 0)
         )
     if active or "last_activity" not in state:
@@ -106,7 +106,7 @@ def record_run(root: Path, entry: dict) -> None:
 
 
 def last_run(root: Path, task_name: str) -> dict | None:
-    """這個 task 最近一次的執行紀錄。"""
+    """The most recent run of this task."""
     found = None
     try:
         with open(root / "runs.jsonl", "r", encoding="utf-8") as f:
