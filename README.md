@@ -2,57 +2,112 @@
 
 English · [繁體中文](README.zh-TW.md)
 
-When your Claude subscription quota is about to expire with some left over, doggybag runs your own scripts. Take home what you couldn't finish.
+**Your Claude subscription quota resets whether you used it or not. doggybag runs your own scripts on what's left before it expires.**
 
-doggybag only decides *when* to run. What runs is up to you: a prompt, a skill, or your own program.
+1. You put scripts in a folder.
+2. Each script says, in a comment at the top, when it should run.
+3. doggybag checks your quota every 10 minutes and runs the ones that are due.
 
-## Requirements
+doggybag only decides *when*. What runs is up to you: a prompt, a skill, or your own program.
 
-- macOS (automatic scheduling is macOS-only for now; on Linux, call `doggybag run` from cron)
-- Python 3.11 or later
-- [Claude Code](https://claude.com/claude-code), logged in
+## Quick start
 
-## Install
+You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
 
 ```bash
-uv tool install .        # or: pipx install .
+# 1. Install and set up (creates ~/.doggybag and a schedule that checks every 10 minutes)
+uv tool install git+https://github.com/toeric/doggybag    # or: pipx install git+https://github.com/toeric/doggybag
 doggybag setup
+
+# 2. Add a task: copy an example into the tasks folder
+cp ~/.doggybag/tasks/examples/a-prompt.sh ~/.doggybag/tasks/10-review.sh
+
+# 3. Edit it (when to run, and what to run), then switch it on
+open -e ~/.doggybag/tasks/10-review.sh
+chmod +x ~/.doggybag/tasks/10-review.sh
+
+# 4. See what doggybag thinks
+doggybag status
 ```
 
-`setup` checks Claude Code, creates `~/.doggybag/`, copies in the examples, and installs a schedule that checks every 10 minutes.
+`status` tells you, for every task, whether it would run right now and why:
 
-## Three commands
+```text
+5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
+week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
-| Command | What it does |
-|---|---|
-| `doggybag setup` | Checks your environment and installs the schedule. `--no-schedule` skips the schedule, `--uninstall` removes it |
-| `doggybag status` | Shows your quota, and whether each task would run right now and why |
-| `doggybag run` | Checks once and runs the tasks whose conditions hold. `doggybag run <task>` runs that task now, ignoring its conditions |
+· 10-review.sh
+    waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
+```
 
-## Writing a task
+That's it. There is nothing to register: **a task is a file in `~/.doggybag/tasks/`.**
 
-One file is one task. Put an executable file in `~/.doggybag/tasks/` and write its conditions in a comment at the top:
+## What a task looks like
+
+The top says when to run. The rest is whatever you want to happen.
 
 ```bash
 #!/bin/bash
 # doggybag:
 #   when: 5h.resets_in <= 60m and 5h.remaining >= 30
-#   when: idle >= 60m and week.behind >= 20
 #   cooldown: 6h
-#   timeout: 30m
 
 cd ~/work/myrepo
 claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "Glob"
 ```
 
+### Recipes for "when"
+
+| I want to run it… | Write |
+|---|---|
+| when the 5-hour window is about to reset with plenty left | `when: 5h.resets_in <= 60m and 5h.remaining >= 30` |
+| when nobody has used Claude for an hour | `when: idle >= 60m` |
+| when I'm using my weekly quota slower than the week is passing | `when: week.behind >= 20` |
+| on the last day of the week, if a lot is left | `when: week.resets_in <= 1d and week.remaining >= 40` |
+| in either of two situations | two `when:` lines, one per situation |
+
+### Managing tasks
+
+| To… | Do this |
+|---|---|
+| add a task | put an executable file in `~/.doggybag/tasks/` |
+| remove a task | delete the file |
+| switch a task off for now | `chmod -x` the file |
+| change the order | rename the files; doggybag goes through them in filename order |
+| try a task right now | `doggybag run 10-review` (ignores its conditions) |
+
+### Three kinds of task
+
+`doggybag setup` puts one example of each in `~/.doggybag/tasks/examples/`.
+
+| Example | What it runs |
+|---|---|
+| `a-prompt.sh` | A prompt, with `claude -p "..."` |
+| `b-skill.sh` | One of your Claude Code skills, with `claude -p "/my-skill"` |
+| `c-own-program.py` | Any program of your own |
+
+Two things to know:
+
+- **Nobody is there to click "allow".** When doggybag triggers a task you are usually away, so anything Claude was not allowed to do in advance is blocked. List the tools a task may use with `--allowedTools`. The examples allow only reading and searching.
+- **Only the logged-in `claude` command uses your subscription quota.** A program that calls the API with an API key is billed separately.
+
+## The three commands
+
+| Command | What it does |
+|---|---|
+| `doggybag setup` | Checks your environment and installs the schedule. `--no-schedule` skips the schedule, `--uninstall` removes it |
+| `doggybag status` | Shows your quota, and whether each task would run right now and why |
+| `doggybag run` | Checks once and runs the tasks that are due. `doggybag run <task>` runs that task now |
+
+## Reference
+
+### Conditions
+
 - Conditions joined by `and` on one line must all hold.
 - With several `when:` lines, any one of them is enough.
-- Tasks are checked in filename order and run one at a time.
 - A task with no `when:` never runs automatically. Run it by hand with `doggybag run <task>`.
-- To disable a task, remove its execute permission (`chmod -x`) or move it out of the folder.
+- Tasks are checked in filename order and run one at a time.
 - The comment marker can be `#`, `//`, `--` or `;`, so a task can be written in any language.
-
-### Signals
 
 `5h` is the 5-hour window and `week` is the weekly limit.
 
@@ -67,16 +122,12 @@ claude -p "Review the three most recent commits." --allowedTools "Read" "Grep" "
 `behind` works like this: if 40% of the window's time has passed and you have used 10%, you are 30 behind.
 Durations use `m`, `h` and `d`.
 
-### Other settings
-
 | Setting | Default | Meaning |
 |---|---|---|
 | `cooldown` | `5h` | How long before the task can trigger again after a run |
 | `timeout` | `1h` | The task is stopped if it runs longer than this |
 
-### The contract between doggybag and a task
-
-doggybag passes these environment variables:
+### What doggybag gives a task
 
 | Variable | Content |
 |---|---|
@@ -90,7 +141,7 @@ A task reports back through its exit code: `0` means done, `75` means "nothing t
 
 Task output is written to `~/.doggybag/logs/`.
 
-## The brake
+### The brake
 
 doggybag cannot know how much quota a task will use, so it re-reads your quota every 5 minutes while a task runs.
 When the remaining quota falls below the reserve, it sends SIGTERM to the task (and force-stops it after 30 seconds), and starts no further tasks.
@@ -104,16 +155,10 @@ notify = true        # desktop notification when a task starts and finishes
 interval_minutes = 10
 ```
 
-## Letting Claude work while nobody is there
-
-When doggybag triggers a task you are usually away, so Claude cannot ask you for permission, and anything not allowed in advance is blocked.
-List the tools a task may use with `--allowedTools`. The examples allow only reading and searching; add more yourself when a task needs to change files.
-
-Only work that goes through the logged-in `claude` command uses your subscription quota. A program that uses an API key is billed separately.
-
-## Known limitations
+### Known limitations
 
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
+- **Automatic scheduling is macOS-only for now.** On Linux, call `doggybag run` from cron.
 - **Quota comes from the text output of `claude -p "/usage"`.** That call uses no quota, and doggybag never touches your login credentials, but parsing will break if the output format changes (last verified with Claude Code 2.1.330).
 - **Usage has 1% resolution.** `idle` cannot see very small amounts of use.
 - **`idle` only updates when doggybag checks.** It is measured from the last time doggybag saw usage go up.
