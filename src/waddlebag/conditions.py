@@ -125,17 +125,48 @@ def _show(value: float | timedelta) -> str:
     return format_duration(value) if isinstance(value, timedelta) else f"{value:.0f}%"
 
 
+_WINDOW = {"5h": "the 5-hour window", "week": "the week"}
+_PACE = {"5h": "in this window", "week": "this week"}
+
+
+def explain(clause: Clause, actual: float | timedelta | None, passed: bool) -> str:
+    """Say in plain words how one clause stands right now."""
+    if actual is None:
+        return "no 5-hour window is open yet"
+    window, _, field = clause.signal.partition(".")
+    wants_at_least = clause.op in (">=", ">")
+    target = clause.value
+
+    if clause.signal == "idle" and wants_at_least:
+        if passed:
+            return f"quiet for {format_duration(actual)}"
+        return f"quota was used {format_duration(actual)} ago, I wait for {format_duration(target)} of quiet"
+    if field == "resets_in" and not wants_at_least:
+        now = f"{_WINDOW[window]} resets in {format_duration(actual)}"
+        return now if passed else f"{now}, I go in the last {format_duration(target)}"
+    if field == "remaining" and wants_at_least:
+        if passed:
+            return f"{actual:.0f}% left"
+        return f"only {actual:.0f}% left in {_WINDOW[window]}, I want {target:g}%"
+    if field == "behind" and wants_at_least:
+        if passed:
+            return f"{actual:.0f} behind pace {_PACE[window]}"
+        return f"you're keeping pace {_PACE[window]} ({actual:.0f} behind, I go at {target:g})"
+    # anything less common: show the condition as written, with the current value
+    return f"{clause} (now {_show(actual)})"
+
+
 def evaluate(clauses: list[Clause], ctx: Context) -> tuple[bool, str]:
-    """Return (holds, explanation). The explanation lists the current value of every clause."""
-    ok = True
-    parts = []
+    """Return (holds, explanation).
+
+    When every clause holds, the explanation lists them all. Otherwise it names the first
+    clause that does not hold, which is what the task is waiting for.
+    """
+    holding = []
     for c in clauses:
         actual = ctx.value(c.signal)
-        if actual is None:
-            ok = False
-            parts.append(f"{c} (unknown: window not active)")
-            continue
-        passed = _OPS[c.op](actual, c.value)
-        ok = ok and passed
-        parts.append(f"{c} ({'yes' if passed else 'no'}, now {_show(actual)})")
-    return ok, " and ".join(parts)
+        passed = actual is not None and _OPS[c.op](actual, c.value)
+        if not passed:
+            return False, explain(c, actual, False)
+        holding.append(explain(c, actual, True))
+    return True, " · ".join(holding)

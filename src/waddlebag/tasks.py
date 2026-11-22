@@ -6,7 +6,7 @@
     ---
     Find the TODO comments and pick the five most worth fixing.
 
-When `when` holds, doggybag goes to the `in` folder and hands the body to the `run` command.
+When `when` holds, waddlebag goes to the `in` folder and hands the body to the `run` command.
 Without `run`, the body goes to Claude Code.
 """
 
