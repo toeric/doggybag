@@ -1,4 +1,8 @@
-# waddlebag 🥡
+<p align="center">
+  <img src="assets/penguin.svg" width="180" alt="A pixel penguin carrying a fish by the tail">
+</p>
+
+# waddlebag
 
 **Your Claude subscription quota resets whether you used it or not. waddlebag spends what's left on jobs you choose, before it expires.**
 
@@ -57,12 +61,19 @@ waddlebag status
 ```
 
 ```text
-5h     60% left · resets in 2h55m (Sun 17:59) · +2 behind pace
-week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
+      ▄▄▄▄▄▄▄▄▄
+    ▄▀▀▀▀▀▀▀▀▀▀▄      checking your quota...
+    ▀▀▀▀▀▀▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀▀▀▀▀▄     5h    ██████░░░░  60% left · resets in 2h55m
+  ▄▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄   week  █████████░  95% left · resets in 6d5h
+  ▀▀ ▀▀▀▀▀▀▀▀▀▀ ▀▀▀   quiet for 12m · I check every 10 minutes
+     ▀▀▀    ▀▀▀
 
-· 10-todo-triage.md
-    waiting: 5h.resets_in <= 1h (no, now 2h55m) and 5h.remaining >= 30% (yes, now 60%)
+○ 10-todo-triage.md    waiting
+    the 5-hour window resets in 2h55m, I go in the last 1h
 ```
+
+In a real terminal the penguin is in colour. It has a pose for each situation: checking, carrying a fish home, celebrating, sleeping, and a couple for when things go wrong.
 
 That's all. It will run by itself when the conditions hold. To see it work right now, run `waddlebag run 10-todo-triage`.
 
@@ -200,11 +211,20 @@ Find the TODO comments in this repository and pick the five most worth fixing.
 Everything a job prints is saved in `~/.waddlebag/logs/`. `waddlebag status` shows the file for each job's last run:
 
 ```text
-· 10-todo-triage.md
-    last run Nov 22 18:50 (exit 0) · output: ~/.waddlebag/logs/10-todo-triage-20261122-185043.log
+○ 10-todo-triage.md    resting, back in 5h52m
+    last time (Nov 22 18:50): done in 4m → ~/.waddlebag/logs/10-todo-triage-20261122-185043.log
 ```
 
 You also get a desktop notification when a job starts and when it finishes.
+
+### What the marks mean
+
+| Mark | Meaning |
+|---|---|
+| `●` | ready: it would run right now |
+| `○` | waiting for its conditions, or resting after a run |
+| `–` | switched off, or it has no `when:` and only runs when you ask |
+| `!` | something is wrong with the file, and the next line says what |
 
 ## When to run
 
@@ -367,14 +387,21 @@ Everything the command prints is written to `~/.waddlebag/logs/`.
 waddlebag cannot know how much quota a task will use, so it re-reads your quota every 5 minutes while a task runs.
 When the remaining quota falls below the reserve, it sends SIGTERM to the task (and force-stops it after 30 seconds), and starts no further tasks.
 
-The reserve is set in `~/.waddlebag/config.toml`:
+### Settings file
+
+`~/.waddlebag/config.toml`:
 
 ```toml
 reserve_5h = 10      # keep at least 10% of the 5-hour window
 reserve_week = 5     # keep at least 5% of the weekly limit
 notify = true        # desktop notification when a task starts and finishes
+mascot = true        # draw the penguin; false for text only
 interval_minutes = 10
 ```
+
+### Plain output
+
+The penguin and the colours only appear when waddlebag is writing to a terminal. In a log file or a pipe the output is plain text. To force plain text in a terminal, set `NO_COLOR=1`.
 
 ### Known limitations
 

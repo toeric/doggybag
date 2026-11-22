@@ -8,9 +8,10 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from waddlebag import launchd, runner, state  # noqa: E402
+from waddlebag import launchd, mascot, runner, state  # noqa: E402
 from waddlebag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
 from waddlebag.tasks import discover, ignored, load_task  # noqa: E402
+from waddlebag.ui import UI  # noqa: E402
 from waddlebag.usage import FIVE_HOURS, ONE_WEEK, Usage, UsageError, Window, parse_usage  # noqa: E402
 
 TPE = ZoneInfo("Asia/Taipei")
@@ -88,7 +89,7 @@ class Conditions(unittest.TestCase):
     def test_inactive_window_is_never_true(self):
         ok, detail = evaluate(parse_when("5h.resets_in <= 60m"), self.ctx(five_left=None))
         self.assertFalse(ok)
-        self.assertIn("not active", detail)
+        self.assertIn("no 5-hour window is open", detail)
 
     def test_percent_sign_is_optional(self):
         self.assertEqual(parse_when("week.remaining >= 40%")[0].value, 40)
@@ -272,38 +273,40 @@ class Deciding(TaskCase):
     def test_error_is_reported(self):
         d = self.decide("---\nwhen: nonsense >= 1\n---\nHi\n", force=True)
         self.assertFalse(d.run)
-        self.assertIn("unknown signal", d.reason)
+        self.assertEqual(d.kind, "problem")
+        self.assertIn("unknown signal", d.detail)
 
     def test_reserve_blocks(self):
         d = self.decide("---\nwhen: idle\n---\nHi\n", self.ctx(five_used=95))
         self.assertFalse(d.run)
-        self.assertIn("reserve", d.reason)
+        self.assertIn("saving your last 10%", d.headline)
 
     def test_switched_off_waits_but_can_be_run_by_hand(self):
         text = "---\nwhen: idle\nenabled: false\n---\nHi\n"
         d = self.decide(text)
         self.assertFalse(d.run)
-        self.assertIn("switched off", d.reason)
+        self.assertEqual((d.kind, d.headline), ("off", "switched off"))
         self.assertTrue(self.decide(text, force=True).run)
 
     def test_missing_folder_is_reported_for_any_task_even_by_hand(self):
         for text in ("---\nwhen: idle\nin: /no/such\n---\nHi\n", "---\nwhen: idle\nin: /no/such\nrun: ./a.sh\n---\n"):
             d = self.decide(text, force=True)
             self.assertFalse(d.run)
-            self.assertIn("folder not found", d.reason)
+            self.assertIn("I can't find the folder /no/such", d.headline)
 
     def test_cooldown_blocks_but_exit_75_does_not(self):
         text = "---\nwhen: idle\ncooldown: 6h\n---\nHi\n"
         ended = (NOW - timedelta(hours=1)).timestamp()
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 0, "stopped": None})
-        self.assertIn("cooling down", self.decide(text).reason)
+        self.assertIn("resting, back in 5h", self.decide(text).headline)
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 75, "stopped": None})
         self.assertTrue(self.decide(text).run)
 
 
 class Executing(TaskCase):
     def execute(self, task, cfg=QUIET, out=None):
-        return runner.execute(task, self.live_ctx(), "test", cfg, self.root, out or (lambda s: None))
+        ui = UI(write=out or (lambda s: None), fancy=False)
+        return runner.execute(task, self.live_ctx(), "test", cfg, self.root, ui)
 
     def test_body_reaches_claude_on_stdin_in_the_right_folder(self):
         # a fake claude that prints its arguments, working folder and stdin
@@ -332,7 +335,8 @@ class Executing(TaskCase):
         self.assertIn(f"cwd={self.work.resolve()}", log)
         self.assertIn("left=77 task=10-task.md", log)
         self.assertEqual(state.last_run(self.root, "10-task.md")["exit"], 3)
-        self.assertTrue(any("failed with exit 3" in line for line in lines))
+        self.assertIn("Packing up 10-task.md", lines[0])
+        self.assertTrue(any("didn't work out (exit 3" in line for line in lines))
 
     def test_run_without_body_sees_empty_input(self):
         t = self.write('---\nwhen: idle\nrun: echo "got=[$(cat)]"\n---\n')
@@ -341,7 +345,7 @@ class Executing(TaskCase):
     def test_timeout_stops_the_whole_process_group(self):
         t = self.write("---\nwhen: idle\ntimeout: 0.02m\nrun: sleep 60 & wait\n---\n")
         entry = self.execute(t)
-        self.assertIn("timeout", entry["stopped"])
+        self.assertEqual(entry["stopped"], "timeout")
         self.assertLess(entry["ended"] - entry["started"], 20)
 
     def test_only_one_run_at_a_time(self):
@@ -386,6 +390,85 @@ class Examples(unittest.TestCase):
             t = load_task(p)
             self.assertFalse(t.enabled)
             self.assertEqual(t.command("claude")[-3:], ["Read", "Grep", "Glob"])
+
+
+class PlainWords(unittest.TestCase):
+    def say(self, when, **kw):
+        idle = kw.pop("idle", timedelta(minutes=5))
+        return evaluate(parse_when(when), Context(make_usage(**kw), idle, NOW))
+
+    def test_waiting_names_the_first_thing_missing(self):
+        self.assertEqual(
+            self.say("leftover"),
+            (False, "the 5-hour window resets in 3h, I go in the last 1h"),
+        )
+        self.assertEqual(
+            self.say("leftover", five_left=timedelta(minutes=40), five_used=90),
+            (False, "only 10% left in the 5-hour window, I want 30%"),
+        )
+        self.assertEqual(self.say("idle"), (False, "quota was used 5m ago, I wait for 1h of quiet"))
+        self.assertEqual(
+            self.say("behind"),
+            (False, "you're keeping pace this week (11 behind, I go at 20)"),
+        )
+
+    def test_ready_lists_everything_that_holds(self):
+        self.assertEqual(
+            self.say("leftover", five_left=timedelta(minutes=42), five_used=40),
+            (True, "the 5-hour window resets in 42m · 60% left"),
+        )
+        self.assertEqual(self.say("idle", idle=timedelta(hours=2)), (True, "quiet for 2h"))
+
+    def test_uncommon_conditions_are_shown_as_written(self):
+        self.assertEqual(self.say("5h.used <= 20"), (False, "5h.used <= 20% (now 23%)"))
+
+
+class Penguin(unittest.TestCase):
+    def test_every_pose_is_a_clean_grid(self):
+        self.assertEqual(set(mascot.SPRITES), {"happy", "look", "fish", "sleep", "sad", "alarm"})
+        for name, grid in mascot.SPRITES.items():
+            self.assertEqual({len(row) for row in grid}, {mascot.WIDTH}, name)
+            self.assertEqual(len(grid) % 2, 0, name)
+            self.assertLessEqual({c for row in grid for c in row} - {"."}, set(mascot.PALETTE), name)
+
+    def strip(self, text):
+        import re
+
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    def test_render_is_two_pixel_rows_per_line_and_always_the_same_width(self):
+        for truecolor in (True, False):
+            for name, grid in mascot.SPRITES.items():
+                lines = mascot.render(name, truecolor)
+                self.assertEqual(len(lines), len(grid) // 2, name)
+                for line in lines:
+                    self.assertEqual(len(self.strip(line)), mascot.WIDTH, name)
+
+    def test_plain_mode_prints_only_the_words(self):
+        lines = []
+        ui = UI(write=lines.append, fancy=False)
+        ui.say("happy", ui.green("Packed!"), ui.dim("second line"))
+        self.assertEqual(lines, ["Packed!", "second line"])
+        self.assertEqual(ui.bar(60), "██████░░░░")
+
+    def test_fancy_mode_puts_the_words_beside_the_penguin(self):
+        lines = []
+        ui = UI(write=lines.append, fancy=True)
+        ui.say("fish", "Packing up a.md", "because you asked")
+        height = len(mascot.SPRITES["fish"]) // 2
+        self.assertEqual(len(lines), height + 1)  # the picture, then a blank line
+        self.assertEqual(lines[-1], "")
+        plain = [self.strip(line) for line in lines[:-1]]
+        self.assertEqual(sum("Packing up a.md" in line for line in plain), 1)
+        with_text = [line for line in plain if line.strip() and len(line) > mascot.WIDTH]
+        for line in with_text:
+            self.assertEqual(line[mascot.WIDTH:mascot.WIDTH + 2], "  ")
+
+    def test_mascot_can_be_switched_off_while_keeping_colour(self):
+        lines = []
+        ui = UI(write=lines.append, fancy=True, mascot_on=False)
+        ui.say("happy", "hello")
+        self.assertEqual(lines, ["hello"])
 
 
 class Schedule(unittest.TestCase):

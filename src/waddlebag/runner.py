@@ -21,6 +21,7 @@ from . import state
 from .conditions import Context, evaluate, format_duration
 from .notify import notify
 from .tasks import Task, discover
+from .ui import UI, short
 from .usage import Usage, UsageError, fetch_usage, find_claude
 
 EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a failure, and no cooldown
@@ -34,15 +35,27 @@ def now_local() -> datetime:
 
 @dataclass
 class Decision:
+    """Whether a task runs now, and how to say so.
+
+    kind is one of: ready, waiting, resting, off, problem.
+    """
+
     run: bool
-    reason: str
+    kind: str
+    headline: str
+    detail: str = ""
+
+    @property
+    def text(self) -> str:
+        return f"{self.headline} {self.detail}".strip()
 
 
-def reserve_problem(usage: Usage, cfg: state.Config) -> str | None:
+def reserve_shortfall(usage: Usage, cfg: state.Config) -> tuple[int, float] | None:
+    """(percent left, reserve) for the window that has fallen below its reserve, if any."""
     if usage.five_hour.remaining < cfg.reserve_5h:
-        return f"5h quota is down to {usage.five_hour.remaining}% (reserve {cfg.reserve_5h:g}%)"
+        return usage.five_hour.remaining, cfg.reserve_5h
     if usage.week.remaining < cfg.reserve_week:
-        return f"weekly quota is down to {usage.week.remaining}% (reserve {cfg.reserve_week:g}%)"
+        return usage.week.remaining, cfg.reserve_week
     return None
 
 
@@ -50,34 +63,38 @@ def decide(
     task: Task, ctx: Context, cfg: state.Config, root: Path, force: bool = False
 ) -> Decision:
     if task.error:
-        return Decision(False, f"header error: {task.error}")
+        return Decision(False, "problem", "I can't read this one", task.error)
     if not task.cwd.is_dir():
-        return Decision(False, f"folder not found: {task.cwd} (set `in:` to a folder that exists)")
+        return Decision(
+            False, "problem", f"I can't find the folder {short(task.cwd)}",
+            "set `in:` to a folder that exists",
+        )
     if force:
-        return Decision(True, "run by hand")
+        return Decision(True, "ready", "", "because you asked")
     if not task.enabled:
-        return Decision(False, "switched off (enabled: false)")
+        return Decision(False, "off", "switched off")
     if not task.whens:
-        return Decision(False, "no `when:` condition, only runs by hand")
+        return Decision(False, "off", f"only when you ask: waddlebag run {task.path.stem}")
 
     previous = state.last_run(root, task.name)
     if previous and previous.get("exit") != EXIT_NOTHING_TO_DO:
         since = ctx.now.timestamp() - previous["ended"]
         left = task.cooldown.total_seconds() - since
         if left > 0:
-            return Decision(False, f"cooling down for another {format_duration(timedelta(seconds=left))}")
+            return Decision(False, "resting", f"resting, back in {format_duration(timedelta(seconds=left))}")
 
-    problem = reserve_problem(ctx.usage, cfg)
-    if problem:
-        return Decision(False, problem)
+    short_of = reserve_shortfall(ctx.usage, cfg)
+    if short_of:
+        left, reserve = short_of
+        return Decision(False, "waiting", f"waiting, I'm saving your last {reserve:g}%", f"{left}% left")
 
-    failed = []
+    waiting_for = []
     for clauses in task.whens:
         ok, detail = evaluate(clauses, ctx)
         if ok:
-            return Decision(True, detail)
-        failed.append(detail)
-    return Decision(False, " | or: ".join(failed))
+            return Decision(True, "ready", "ready, I'd pack this up right now", detail)
+        waiting_for.append(detail)
+    return Decision(False, "waiting", "waiting", "; or ".join(waiting_for))
 
 
 @contextmanager
@@ -111,7 +128,7 @@ def _stop(proc: subprocess.Popen) -> None:
         proc.wait()
 
 
-def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path, out) -> dict:
+def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path, ui: UI) -> dict:
     logs = root / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     started = ctx.now
@@ -131,11 +148,13 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         if window.resets_at:
             env[f"WADDLEBAG_{key}_RESETS_AT"] = str(int(window.resets_at.timestamp()))
 
-    out(f"🥡 packing up {task.name}: {reason}")
+    name, title = task.name, task.path.stem
+    ui.say("fish", f"Packing up {ui.bold(name)}", ui.dim(reason))
     if cfg.notify:
-        notify(f"Packing up {task.name}")
+        notify(f"Packing up {title}")
 
-    stopped = None
+    stopped = None  # "timeout" or "reserve"
+    left = None  # percent left when the reserve brake fired
     with open(log_path, "wb") as log, tempfile.TemporaryFile() as prompt_file:
         # The body goes on stdin: it cannot be mistaken for an argument, and its length is not limited.
         # With an empty body the command simply reads end-of-file.
@@ -162,13 +181,15 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                 while proc.poll() is None:
                     time.sleep(2)
                     if time.monotonic() >= deadline:
-                        stopped = f"timeout after {format_duration(task.timeout)}"
+                        stopped = "timeout"
                     elif time.monotonic() >= next_watch:
                         next_watch = time.monotonic() + WATCH_INTERVAL
                         try:
-                            stopped = reserve_problem(fetch_usage(cfg.claude), cfg)
+                            short_of = reserve_shortfall(fetch_usage(cfg.claude), cfg)
                         except UsageError:
-                            pass  # unreadable this time: check again later, do not stop the task for it
+                            short_of = None  # unreadable this time: check again later, do not stop the task for it
+                        if short_of:
+                            stopped, left = "reserve", short_of[0]
                     if stopped:
                         _stop(proc)
             except BaseException:
@@ -179,7 +200,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
     ended = now_local()
     code = proc.returncode if proc is not None else 127
     entry = {
-        "task": task.name,
+        "task": name,
         "reason": reason,
         "started": started.timestamp(),
         "ended": ended.timestamp(),
@@ -190,40 +211,58 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
     state.record_run(root, entry)
 
     took = format_duration(ended - started)
-    if stopped:
-        summary = f"stopped {task.name} after {took}: {stopped}"
+    where = ui.dim(f"→ {short(log_path)}")
+    if stopped == "reserve":
+        ui.say(
+            "alarm",
+            ui.yellow(f"Dropped {name} after {took}."),
+            f"You're down to {left}% and I'm saving the rest for you.",
+        )
+        note = f"Dropped {title} to save your last {left}%"
+    elif stopped == "timeout":
+        ui.say(
+            "alarm",
+            ui.yellow(f"Dropped {name}."),
+            f"It ran past its {format_duration(task.timeout)} limit.",
+        )
+        note = f"Dropped {title}: it ran past its {format_duration(task.timeout)} limit"
     elif code == 0:
-        summary = f"finished {task.name} in {took}"
+        ui.say("happy", f"{ui.green('Packed!')} {name} is done ({took})", where)
+        note = f"Packed! {title} is done ({took})"
     elif code == EXIT_NOTHING_TO_DO:
-        summary = f"{task.name} had nothing to do"
+        ui.say("sleep", f"{name} had nothing to do.", ui.dim("I'll ask again next time."))
+        note = None
     else:
-        summary = f"{task.name} failed with exit {code} after {took} (log: {log_path})"
-    out(f"   {summary}")
-    if cfg.notify and code != EXIT_NOTHING_TO_DO:
-        notify(summary[0].upper() + summary[1:])
+        failed = ui.red(f"{name} didn't work out")
+        ui.say("sad", f"{failed} (exit {code}, {took})", where)
+        note = f"{title} didn't work out (exit {code})"
+    if cfg.notify and note:
+        notify(note)
     return entry
 
 
-def run_cycle(root: Path, only: str | None = None, out=print) -> int:
+def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
     """Check once. With `only`, run just that task and ignore its conditions. Returns the exit code."""
     cfg = state.load_config(root)
+    ui = ui or UI(mascot_on=cfg.mascot)
     with single_instance(root) as acquired:
         if not acquired:
-            out("another waddlebag run is in progress; skipping")
+            ui.say("sleep", "I'm already out on a job.", ui.dim("Skipping this round."))
             return 0
         try:
             usage = fetch_usage(cfg.claude)
         except UsageError as e:
-            out(f"could not read quota: {e}")
+            ui.say("sad", ui.red("I couldn't read your quota."), ui.dim(str(e)))
             return 1
         now = now_local()
         ctx = Context(usage, state.update_idle(root, usage, now), now)
 
         tasks = discover(root / "tasks")
         if only:
+            known = ", ".join(t.path.stem for t in tasks) or "nothing yet"
             tasks = [t for t in tasks if only in (t.name, t.path.stem)]
             if not tasks:
-                out(f"no task named '{only}' in {root / 'tasks'}")
+                ui.say("sad", ui.red(f"I don't know a job called '{only}'."), f"I have: {known}")
                 return 1
 
         ran = 0
@@ -231,22 +270,22 @@ def run_cycle(root: Path, only: str | None = None, out=print) -> int:
             decision = decide(task, ctx, cfg, root, force=bool(only))
             if not decision.run:
                 if only:
-                    out(f"cannot run {task.name}: {decision.reason}")
+                    ui.say("sad", ui.red(f"I can't run {task.name}."), decision.text)
                     return 1
                 continue
-            entry = execute(task, ctx, decision.reason, cfg, root, out)
+            entry = execute(task, ctx, decision.detail, cfg, root, ui)
             ran += 1
-            if entry["stopped"] and "quota" in entry["stopped"]:
+            if entry["stopped"] == "reserve":
                 break
             # the task changed the quota, so judge the next one against fresh numbers
             try:
                 usage = fetch_usage(cfg.claude)
             except UsageError as e:
-                out(f"could not re-read quota, stopping this round: {e}")
+                ui.say("sad", ui.red("I couldn't re-read your quota, so I'm stopping here."), ui.dim(str(e)))
                 break
             now = now_local()
             ctx = Context(usage, state.update_idle(root, usage, now), now)
 
         if ran == 0 and not only:
-            out("nothing to pack up right now")
+            ui.say("sleep", f"Nothing to pack up right now. {ui.blue('z z z')}")
         return 0

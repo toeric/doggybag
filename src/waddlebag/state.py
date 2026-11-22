@@ -21,6 +21,9 @@ reserve_week = 5
 # Desktop notification when a task starts and when it finishes.
 notify = true
 
+# Draw the penguin in the terminal. Set to false for text only.
+mascot = true
+
 # How often the scheduler checks, in minutes. Run `waddlebag setup` again after changing it.
 interval_minutes = 10
 """
@@ -38,6 +41,7 @@ class Config:
     reserve_5h: float = 10
     reserve_week: float = 5
     notify: bool = True
+    mascot: bool = True
     interval_minutes: int = 10
     claude: str | None = None
 
@@ -47,7 +51,7 @@ def load_config(root: Path) -> Config:
     path = root / "config.toml"
     if path.exists():
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        for key in ("reserve_5h", "reserve_week", "notify", "interval_minutes", "claude"):
+        for key in ("reserve_5h", "reserve_week", "notify", "mascot", "interval_minutes", "claude"):
             if key in data:
                 setattr(cfg, key, data[key])
     return cfg
