@@ -19,7 +19,17 @@ Pick the five that are most worth fixing.
 
 它的意思是：**額度快重置而且還有剩的時候，到這個資料夾做這件事。**
 
+每件工作都是同樣的三個部分：
+
+| 部分 | 回答什麼 | 在這個例子裡 |
+|---|---|---|
+| `when:` | 什麼時候跑 | 額度快重置而且還有剩 |
+| `in:` | 在哪裡跑 | `~/work/myrepo` |
+| 下面的文字 | 做什麼 | 找出 TODO 註解 |
+
 doggybag 每 10 分鐘檢查一次額度。時機到了，它把這段文字交給 Claude Code，再把回答存成檔案。你不需要在電腦前。
+
+想讓 Claude Code 以外的東西來做？加一行 `run:`，文字就會改交給那個指令。[後面有說明。](#把工作交給別的東西)
 
 ## 開始使用
 
@@ -68,8 +78,8 @@ week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 | [docs-check.md](src/doggybag/examples/docs-check.md) | 找出 README 和程式碼不一致的地方 | 這週的額度用得比較慢 | 不會 |
 | [write-tests.md](src/doggybag/examples/write-tests.md) | 幫測試最少的檔案寫測試 | 一小時沒人用 Claude，而且這週用得比較慢 | 會，只改 tests 資料夾 |
 | [run-skill.md](src/doggybag/examples/run-skill.md) | 跑你自己的 Claude Code skill | 一小時沒人用 Claude | 看 skill 的內容 |
-| [review-commits.sh](src/doggybag/examples/review-commits.sh) | script：整理最近的 commit，請 Claude 檢查，存成報告 | 額度快重置而且還有剩 | 不會 |
-| [own-program.py](src/doggybag/examples/own-program.py) | script：呼叫你自己的程式 | 一週的最後一天，而且還剩很多 | 由你決定 |
+| [review-commits.md](src/doggybag/examples/review-commits.md) | 用 `run:` 整理最近的 commit，交給 Claude 檢查 | 額度快重置而且還有剩 | 不會 |
+| [own-agent.md](src/doggybag/examples/own-agent.md) | 用 `run:` 把文字交給你自己的程式 | 一週的最後一天，而且還剩很多 | 看你的程式 |
 
 ## 結果在哪裡
 
@@ -118,21 +128,45 @@ tools: Read, Grep, Glob, Edit, Write    # 也可以改檔案
 
 沒寫 `tools:` 的工作只能讀。
 
-## script
+## 把工作交給別的東西
 
-一段 prompt 不夠用時，工作也可以是任何語言的 script。設定寫在開頭的註解裡，檔案要有執行權限（`chmod +x`）。
+工作的文字預設交給 Claude Code。加上 `run:`，就改交給那個指令。其他部分完全不變。
 
-```bash
-#!/bin/bash
-# doggybag:
-#   when: leftover
-#   cooldown: 6h
+**你自己的 agent。** 設定下面的文字就是你的程式收到的輸入：
 
-cd ~/work/myrepo
-git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/review.md
+```markdown
+---
+when: idle
+in: ~/work/myrepo
+run: python3 ~/agents/my_agent.py
+---
+Find the TODO comments and pick the five most worth fixing.
 ```
 
-只有已登入的 `claude` 指令會用到訂閱額度。用 API key 呼叫 API 的程式是另外計費的。
+**不需要指示的 script。** 文字留空就好：
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+run: ./scripts/nightly-review.sh
+---
+```
+
+**一行的管線。** `run:` 是 shell 指令，所以也可以這樣寫：
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+run: git log -3 --patch | claude -p "Review these commits. List anything risky."
+---
+```
+
+有兩件事要知道：
+
+- `tools:` 和 `model:` 是給 Claude Code 的設定，不能和 `run:` 一起用。
+- 只有已登入的 `claude` 指令會用到訂閱額度。用 API key 呼叫 API 的程式是另外計費的。
 
 ## 管理工作
 
@@ -162,8 +196,7 @@ git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/
 - 有多行 `when:` 時，任一行成立就觸發。
 - 沒有 `when:` 的 task 不會自動跑，只能用 `doggybag run <task>` 手動跑。
 - task 依檔名順序檢查，一次只跑一個。
-- `.md` 檔是給 Claude Code 的 prompt。其他檔案會當成 script 執行，需要有執行權限。
-- script 的註解符號可以是 `#`、`//`、`--` 或 `;`。
+- 只有直接放在 `~/.doggybag/tasks/` 裡的 `.md` 檔是 task。其他檔案和子資料夾會被忽略。
 
 三個詞分別等於：
 
@@ -186,36 +219,34 @@ git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/
 `behind` 的算法：窗口的時間過了 40%，額度只用了 10%，就是落後 30。
 時間的單位是 `m`、`h`、`d`。
 
-### 每個 task 都能用的設定
-
-| 設定 | 預設 | 意思 |
-|---|---|---|
-| `when` | 無 | 什麼時候跑，可以寫多行 |
-| `cooldown` | `5h` | 跑完後多久內不再觸發 |
-| `timeout` | `1h` | 跑超過這個時間就中止 |
-| `enabled` | `true` | 設成 `false` 就停用這個 task |
-
-prompt 檔（`.md`）另外可以用：
+### 所有設定
 
 | 設定 | 意思 | 沒寫的話 |
 |---|---|---|
-| `in` | Claude 工作的資料夾 | tasks 資料夾 |
-| `tools` | Claude 不用問就能做的事。`none` 表示都不允許 | `Read, Grep, Glob` |
-| `model` | 用哪個模型 | 你的 Claude Code 預設值 |
+| `when` | 什麼時候跑，可以寫多行 | 只能手動跑 |
+| `in` | 在哪個資料夾工作 | tasks 資料夾 |
+| `run` | 代替 Claude Code 來做事的 shell 指令 | 由 Claude Code 來做 |
+| `tools` | Claude 不用問就能做的事。`none` 表示都不允許。不能和 `run` 一起用 | `Read, Grep, Glob` |
+| `model` | 用哪個 Claude 模型。不能和 `run` 一起用 | 你的 Claude Code 預設值 |
+| `cooldown` | 跑完後多久內不再觸發 | `5h` |
+| `timeout` | 跑超過這個時間就中止 | `1h` |
+| `enabled` | 設成 `false` 就停用這個 task | `true` |
 
-### doggybag 傳給 task 的資訊
+### `run:` 的指令會收到什麼
 
-| 變數 | 內容 |
+| 項目 | 內容 |
 |---|---|
+| 標準輸入 | 設定下面的文字 |
+| 工作目錄 | `in:` 後面的資料夾 |
 | `DOGGYBAG_TASK` | task 的檔名 |
 | `DOGGYBAG_REASON` | 觸發的原因 |
 | `DOGGYBAG_5H_REMAINING`、`DOGGYBAG_WEEK_REMAINING` | 剩餘 % |
 | `DOGGYBAG_5H_RESETS_AT`、`DOGGYBAG_WEEK_RESETS_AT` | 重置時間（epoch 秒） |
 | `DOGGYBAG_LOG` | 這次執行的 log 檔路徑 |
 
-script 用 exit code 回報結果：`0` 是完成，`75` 是「現在沒事可做」（不算失敗，也不進 cooldown），其他是失敗。
+指令用 exit code 回報結果：`0` 是完成，`75` 是「現在沒事可做」（不算失敗，也不進 cooldown），其他是失敗。
 
-task 的輸出會寫到 `~/.doggybag/logs/`。
+指令印出的所有內容會寫到 `~/.doggybag/logs/`。
 
 ### 煞車
 

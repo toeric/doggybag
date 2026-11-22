@@ -1,6 +1,6 @@
 """決定哪些 task 該跑，並執行它們。
 
-doggybag 不知道 script 會花多少額度，所以唯一的煞車是：
+doggybag 不知道一個 task 會花多少額度，所以唯一的煞車是：
 task 執行期間持續讀額度，低於保留線就中止，也不再開下一個。
 """
 
@@ -23,7 +23,7 @@ from .notify import notify
 from .tasks import Task, discover
 from .usage import Usage, UsageError, fetch_usage, find_claude
 
-EXIT_NOTHING_TO_DO = 75  # script 回報「現在沒事可做」：不算失敗，也不進 cooldown
+EXIT_NOTHING_TO_DO = 75  # 指令回報「現在沒事可做」：不算失敗，也不進 cooldown
 WATCH_INTERVAL = 300  # 執行期間每隔幾秒重讀一次額度
 KILL_GRACE = 30  # SIGTERM 之後等幾秒才 SIGKILL
 
@@ -51,9 +51,7 @@ def decide(
 ) -> Decision:
     if task.error:
         return Decision(False, f"header error: {task.error}")
-    if not task.executable:
-        return Decision(False, "not executable (chmod +x to enable)")
-    if task.is_prompt and not task.cwd.is_dir():
+    if not task.cwd.is_dir():
         return Decision(False, f"folder not found: {task.cwd} (set `in:` to a folder that exists)")
     if force:
         return Decision(True, "run by hand")
@@ -118,6 +116,8 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
     logs.mkdir(parents=True, exist_ok=True)
     started = ctx.now
     log_path = logs / f"{task.path.stem}-{started:%Y%m%d-%H%M%S}.log"
+    if not task.run and not find_claude(cfg.claude):
+        raise UsageError("`claude` not found on PATH")
 
     env = dict(os.environ)
     env.update(
@@ -137,18 +137,16 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
 
     stopped = None
     with open(log_path, "wb") as log, tempfile.TemporaryFile() as prompt_file:
-        stdin = subprocess.DEVNULL
-        if task.is_prompt:
-            # prompt 走 stdin：不會被當成指令的參數解讀，長度也不受限
-            prompt_file.write(task.prompt.encode("utf-8"))
-            prompt_file.seek(0)
-            stdin = prompt_file
+        # 內文走 stdin：不會被當成指令的參數解讀，長度也不受限。
+        # 內文是空的時候，指令會直接讀到結尾。
+        prompt_file.write(task.body.encode("utf-8"))
+        prompt_file.seek(0)
         try:
             proc = subprocess.Popen(
                 task.command(find_claude(cfg.claude)),
                 cwd=task.cwd,
                 env=env,
-                stdin=stdin,
+                stdin=prompt_file,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # 自己一個 process group，中止時連子程序一起停

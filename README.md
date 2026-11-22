@@ -19,7 +19,17 @@ Pick the five that are most worth fixing.
 
 It says: *when my quota is about to reset with some left over, go to this folder and do this.*
 
+Every job has the same three parts:
+
+| Part | Answers | In the example |
+|---|---|---|
+| `when:` | When should it run? | when quota is about to reset with some left |
+| `in:` | Where? | in `~/work/myrepo` |
+| the text below | What should be done? | find the TODO comments |
+
 doggybag checks your quota every 10 minutes. When the moment comes it hands the text to Claude Code, and saves the answer to a file. You don't have to be at your computer.
+
+Want something other than Claude Code to do the work? Add one line, `run:`, and the text goes to that command instead. [More on that below.](#handing-the-job-to-something-else)
 
 ## Get started
 
@@ -68,8 +78,8 @@ That's all. It will run by itself when the conditions hold. To see it work right
 | [docs-check.md](src/doggybag/examples/docs-check.md) | Finds places where the README no longer matches the code | you are behind on the week | No |
 | [write-tests.md](src/doggybag/examples/write-tests.md) | Writes tests for the least-tested file | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
 | [run-skill.md](src/doggybag/examples/run-skill.md) | Runs one of your own Claude Code skills | nobody has used Claude for an hour | Depends on the skill |
-| [review-commits.sh](src/doggybag/examples/review-commits.sh) | A script: collects the latest commits, asks Claude to review them, saves a report | quota is about to reset with some left | No |
-| [own-program.py](src/doggybag/examples/own-program.py) | A script that calls a program of your own | the last day of the week, with a lot left | Up to you |
+| [review-commits.md](src/doggybag/examples/review-commits.md) | Uses `run:` to collect the latest commits and pipe them to Claude for review | quota is about to reset with some left | No |
+| [own-agent.md](src/doggybag/examples/own-agent.md) | Uses `run:` to hand the text to a program of your own | the last day of the week, with a lot left | Up to your program |
 
 ## Where the answer goes
 
@@ -118,21 +128,45 @@ tools: Read, Grep, Glob, Edit, Write    # may also change files
 
 Leave `tools:` out and the job can only read.
 
-## Scripts
+## Handing the job to something else
 
-When one prompt is not enough, a job can be a script in any language. Put the settings in a comment at the top and make the file executable (`chmod +x`).
+By default the text of a job goes to Claude Code. Add `run:` and it goes to that command instead. Everything else about the job stays the same.
 
-```bash
-#!/bin/bash
-# doggybag:
-#   when: leftover
-#   cooldown: 6h
+**Your own agent.** The text below the settings is what your program receives as its input:
 
-cd ~/work/myrepo
-git log -3 --patch | claude -p "Review these commits. List anything risky." > ~/review.md
+```markdown
+---
+when: idle
+in: ~/work/myrepo
+run: python3 ~/agents/my_agent.py
+---
+Find the TODO comments and pick the five most worth fixing.
 ```
 
-Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
+**A script that needs no instructions.** Leave the text out:
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+run: ./scripts/nightly-review.sh
+---
+```
+
+**A one-line pipeline.** `run:` is a shell command, so this works too:
+
+```markdown
+---
+when: leftover
+in: ~/work/myrepo
+run: git log -3 --patch | claude -p "Review these commits. List anything risky."
+---
+```
+
+Two things to know:
+
+- `tools:` and `model:` are settings for Claude Code, so they cannot be combined with `run:`.
+- Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
 
 ## Managing jobs
 
@@ -162,8 +196,7 @@ The details, for when you need them. In the code and the commands a job is calle
 - With several `when:` lines, any one of them is enough.
 - A task with no `when:` never runs automatically. Run it by hand with `doggybag run <task>`.
 - Tasks are checked in filename order and run one at a time.
-- A `.md` file is a prompt for Claude Code. Any other file is run as a script and must be executable.
-- In a script, the comment marker can be `#`, `//`, `--` or `;`.
+- Only `.md` files directly inside `~/.doggybag/tasks/` are tasks. Other files and subfolders are ignored.
 
 The three words are short for:
 
@@ -186,36 +219,34 @@ The three words are short for:
 `behind` works like this: if 40% of the window's time has passed and you have used 10%, you are 30 behind.
 Durations use `m`, `h` and `d`.
 
-### Settings for every task
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `when` | none | When to run. Can appear more than once |
-| `cooldown` | `5h` | How long before the task can trigger again after a run |
-| `timeout` | `1h` | The task is stopped if it runs longer than this |
-| `enabled` | `true` | Set to `false` to switch the task off |
-
-Prompt files (`.md`) also take:
+### All settings
 
 | Setting | Meaning | If you leave it out |
 |---|---|---|
-| `in` | The folder Claude works in | The tasks folder |
-| `tools` | What Claude may do without asking. `none` allows nothing | `Read, Grep, Glob` |
-| `model` | Which model to use | Your Claude Code default |
+| `when` | When to run. Can appear more than once | The task only runs by hand |
+| `in` | The folder to work in | The tasks folder |
+| `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
+| `tools` | What Claude may do without asking. `none` allows nothing. Not with `run` | `Read, Grep, Glob` |
+| `model` | Which Claude model to use. Not with `run` | Your Claude Code default |
+| `cooldown` | How long before the task can trigger again after a run | `5h` |
+| `timeout` | The task is stopped if it runs longer than this | `1h` |
+| `enabled` | Set to `false` to switch the task off | `true` |
 
-### What doggybag gives a task
+### What a `run:` command receives
 
-| Variable | Content |
+| What | Content |
 |---|---|
+| Standard input | The text below the settings |
+| Working directory | The folder after `in:` |
 | `DOGGYBAG_TASK` | The task's filename |
 | `DOGGYBAG_REASON` | Why it was triggered |
 | `DOGGYBAG_5H_REMAINING`, `DOGGYBAG_WEEK_REMAINING` | Percent left |
 | `DOGGYBAG_5H_RESETS_AT`, `DOGGYBAG_WEEK_RESETS_AT` | Reset time (epoch seconds) |
 | `DOGGYBAG_LOG` | Path of this run's log file |
 
-A script reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
+The command reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
 
-Task output is written to `~/.doggybag/logs/`.
+Everything the command prints is written to `~/.doggybag/logs/`.
 
 ### The brake
 
