@@ -1,4 +1,4 @@
-"""三個指令：setup、status、run。"""
+"""The three commands: setup, status, run."""
 
 from __future__ import annotations
 
@@ -61,12 +61,12 @@ def cmd_setup(args) -> int:
         target = examples / item.name
         if not target.exists():
             with resources.as_file(item) as src:
-                shutil.copyfile(src, target)  # 不帶執行權限，範例不會被誤跑
+                shutil.copyfile(src, target)  # examples/ is a subfolder, so these are never run from here
     print(f"example tasks are in {examples}")
 
     starter = tasks_dir / STARTER_NAME
     if first_time:
-        # 第一次設定時直接給一個可以改的 task，預設是關閉的
+        # on a fresh install, hand the user a first task to edit; it starts switched off
         with resources.as_file(templates.joinpath(STARTER_EXAMPLE)) as src:
             shutil.copyfile(src, starter)
         print(f"wrote a first task (switched off): {starter}")

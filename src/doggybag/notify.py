@@ -1,4 +1,4 @@
-"""桌面通知。目前只支援 macOS；其他平台靜靜略過。"""
+"""Desktop notifications. macOS only for now; other platforms are skipped silently."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def notify(message: str, title: str = "doggybag") -> None:
     if sys.platform != "darwin":
         return
     try:
-        # 文字用參數傳入，不拼進 AppleScript 字串
+        # pass the text as arguments, never spliced into the AppleScript source
         subprocess.run(
             ["osascript", *_SCRIPT, message, title],
             stdin=subprocess.DEVNULL,

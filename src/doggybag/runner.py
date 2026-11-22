@@ -1,7 +1,7 @@
-"""決定哪些 task 該跑，並執行它們。
+"""Decide which tasks are due, and run them.
 
-doggybag 不知道一個 task 會花多少額度，所以唯一的煞車是：
-task 執行期間持續讀額度，低於保留線就中止，也不再開下一個。
+doggybag cannot know how much quota a task will use, so its only brake is this:
+keep reading the quota while a task runs, stop it below the reserve, and start no further tasks.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from .notify import notify
 from .tasks import Task, discover
 from .usage import Usage, UsageError, fetch_usage, find_claude
 
-EXIT_NOTHING_TO_DO = 75  # 指令回報「現在沒事可做」：不算失敗，也不進 cooldown
-WATCH_INTERVAL = 300  # 執行期間每隔幾秒重讀一次額度
-KILL_GRACE = 30  # SIGTERM 之後等幾秒才 SIGKILL
+EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a failure, and no cooldown
+WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
+KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
 
 
 def now_local() -> datetime:
@@ -82,7 +82,7 @@ def decide(
 
 @contextmanager
 def single_instance(root: Path):
-    """同一時間只允許一個 doggybag run。拿不到鎖時 yield False。"""
+    """Allow only one `doggybag run` at a time. Yields False when the lock is taken."""
     root.mkdir(parents=True, exist_ok=True)
     f = open(root / "lock", "w")
     try:
@@ -137,8 +137,8 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
 
     stopped = None
     with open(log_path, "wb") as log, tempfile.TemporaryFile() as prompt_file:
-        # 內文走 stdin：不會被當成指令的參數解讀，長度也不受限。
-        # 內文是空的時候，指令會直接讀到結尾。
+        # The body goes on stdin: it cannot be mistaken for an argument, and its length is not limited.
+        # With an empty body the command simply reads end-of-file.
         prompt_file.write(task.body.encode("utf-8"))
         prompt_file.seek(0)
         try:
@@ -149,7 +149,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                 stdin=prompt_file,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,  # 自己一個 process group，中止時連子程序一起停
+                start_new_session=True,  # its own process group, so stopping it stops its children too
             )
         except OSError as e:
             log.write(f"doggybag: could not start: {e}\n".encode())
@@ -168,11 +168,11 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                         try:
                             stopped = reserve_problem(fetch_usage(cfg.claude), cfg)
                         except UsageError:
-                            pass  # 讀不到就下次再看，不因此中止 task
+                            pass  # unreadable this time: check again later, do not stop the task for it
                     if stopped:
                         _stop(proc)
             except BaseException:
-                # doggybag 自己被中止時，不留下還在跑的 task
+                # if doggybag itself is interrupted, do not leave the task running
                 _stop(proc)
                 raise
 
@@ -205,7 +205,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
 
 
 def run_cycle(root: Path, only: str | None = None, out=print) -> int:
-    """檢查一輪。only 有值時只跑那個 task，而且不看條件。回傳 exit code。"""
+    """Check once. With `only`, run just that task and ignore its conditions. Returns the exit code."""
     cfg = state.load_config(root)
     with single_instance(root) as acquired:
         if not acquired:
@@ -238,7 +238,7 @@ def run_cycle(root: Path, only: str | None = None, out=print) -> int:
             ran += 1
             if entry["stopped"] and "quota" in entry["stopped"]:
                 break
-            # task 跑完額度變了，下一個 task 要用新的數字判斷
+            # the task changed the quota, so judge the next one against fresh numbers
             try:
                 usage = fetch_usage(cfg.claude)
             except UsageError as e:

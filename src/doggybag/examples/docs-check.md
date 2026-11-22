@@ -1,9 +1,9 @@
 ---
-# Runs when you are using your weekly quota slower than the week is passing.
+# Finds places where the README no longer matches the code.
 when: behind
 in: ~/path/to/your/repo
-tools: Read, Grep, Glob
 cooldown: 1d
+enabled: false
 ---
 Compare README.md with the code in this repository.
 

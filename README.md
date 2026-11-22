@@ -1,7 +1,5 @@
 # doggybag 🥡
 
-English · [繁體中文](README.zh-TW.md)
-
 **Your Claude subscription quota resets whether you used it or not. doggybag spends what's left on jobs you choose, before it expires.**
 
 ## What it looks like
@@ -70,16 +68,132 @@ That's all. It will run by itself when the conditions hold. To see it work right
 
 ## Example jobs
 
-`setup` also copies these into `~/.doggybag/tasks/examples/`. To use one, copy it into `~/.doggybag/tasks/` and set the folder after `in:`.
+Six ready-made jobs. `setup` copies them into `~/.doggybag/tasks/examples/`.
+
+**To use one:** copy it into `~/.doggybag/tasks/`, set the folder after `in:`, and change `enabled: false` to `true`.
+
+Every example has the same layout: a first line that says what it does, the settings, then the text of the job.
 
 | Example | What it does | Runs when | Changes your files? |
 |---|---|---|---|
-| [todo-triage.md](src/doggybag/examples/todo-triage.md) | Lists the five TODO comments most worth fixing | quota is about to reset with some left | No |
-| [docs-check.md](src/doggybag/examples/docs-check.md) | Finds places where the README no longer matches the code | you are behind on the week | No |
-| [write-tests.md](src/doggybag/examples/write-tests.md) | Writes tests for the least-tested file | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
-| [run-skill.md](src/doggybag/examples/run-skill.md) | Runs one of your own Claude Code skills | nobody has used Claude for an hour | Depends on the skill |
-| [review-commits.md](src/doggybag/examples/review-commits.md) | Uses `run:` to collect the latest commits and pipe them to Claude for review | quota is about to reset with some left | No |
-| [own-agent.md](src/doggybag/examples/own-agent.md) | Uses `run:` to hand the text to a program of your own | the last day of the week, with a lot left | Up to your program |
+| [todo-triage.md](src/doggybag/examples/todo-triage.md?plain=1) | Lists the five TODO comments most worth fixing | quota is about to reset with some left | No |
+| [docs-check.md](src/doggybag/examples/docs-check.md?plain=1) | Finds places where the README no longer matches the code | you are behind on the week | No |
+| [write-tests.md](src/doggybag/examples/write-tests.md?plain=1) | Writes tests for the least-tested file. Allowed to change files | nobody has used Claude for an hour, and you are behind on the week | Yes, in the tests folder |
+| [run-skill.md](src/doggybag/examples/run-skill.md?plain=1) | Runs one of your own Claude Code skills. Replace /my-skill with its name | nobody has used Claude for an hour | Depends on the skill |
+| [review-commits.md](src/doggybag/examples/review-commits.md?plain=1) | Uses run: to collect the latest commits and pipe them to Claude for review | quota is about to reset with some left | No |
+| [own-agent.md](src/doggybag/examples/own-agent.md?plain=1) | Uses run: to hand the text below to a program of your own | the last day of the week, with a lot left | Up to your program |
+
+The full text of each one:
+
+<details>
+<summary><code>todo-triage.md</code></summary>
+
+```markdown
+---
+# Lists the five TODO comments most worth fixing.
+when: leftover
+in: ~/path/to/your/repo
+cooldown: 6h
+enabled: false
+---
+Find the TODO and FIXME comments in this repository.
+
+Pick the five that are most worth fixing. For each one, give the file and line,
+say in one sentence what is wrong, and say how much work a fix would be.
+```
+
+</details>
+
+<details>
+<summary><code>docs-check.md</code></summary>
+
+```markdown
+---
+# Finds places where the README no longer matches the code.
+when: behind
+in: ~/path/to/your/repo
+cooldown: 1d
+enabled: false
+---
+Compare README.md with the code in this repository.
+
+List every place where the README describes something the code no longer does:
+commands, options, file paths, or behaviour. Quote the README line and say what
+the code does instead. If everything matches, say so in one line.
+```
+
+</details>
+
+<details>
+<summary><code>write-tests.md</code></summary>
+
+```markdown
+---
+# Writes tests for the least-tested file. Allowed to change files.
+when: idle and behind
+in: ~/path/to/your/repo
+tools: Read, Grep, Glob, Edit, Write
+cooldown: 1d
+timeout: 45m
+enabled: false
+---
+Find the source file in this repository that has the least test coverage.
+
+Write tests for it in the existing tests folder, following the style of the
+tests that are already there. Only add or change files inside the tests folder.
+End with a list of the files you touched.
+```
+
+</details>
+
+<details>
+<summary><code>run-skill.md</code></summary>
+
+```markdown
+---
+# Runs one of your own Claude Code skills. Replace /my-skill with its name.
+when: idle
+in: ~/path/to/your/repo
+cooldown: 12h
+enabled: false
+---
+/my-skill
+```
+
+</details>
+
+<details>
+<summary><code>review-commits.md</code></summary>
+
+```markdown
+---
+# Uses run: to collect the latest commits and pipe them to Claude for review.
+when: leftover
+in: ~/path/to/your/repo
+run: git log -3 --patch | claude -p "Review these commits. List anything that looks risky."
+cooldown: 6h
+enabled: false
+---
+```
+
+</details>
+
+<details>
+<summary><code>own-agent.md</code></summary>
+
+```markdown
+---
+# Uses run: to hand the text below to a program of your own.
+when: week.resets_in <= 1d and week.remaining >= 40
+in: ~/path/to/your/repo
+run: python3 ~/agents/my_agent.py
+cooldown: 1d
+enabled: false
+---
+Find the TODO comments in this repository and pick the five most worth fixing.
+```
+
+</details>
 
 ## Where the answer goes
 

@@ -1,13 +1,11 @@
 ---
-# Runs after an hour with nobody using Claude, if the week is also behind.
+# Writes tests for the least-tested file. Allowed to change files.
 when: idle and behind
 in: ~/path/to/your/repo
-
-# This task changes files, so it also gets Edit and Write.
 tools: Read, Grep, Glob, Edit, Write
-
 cooldown: 1d
 timeout: 45m
+enabled: false
 ---
 Find the source file in this repository that has the least test coverage.
 

@@ -1,7 +1,7 @@
-"""讀取 Claude 訂閱額度。
+"""Read the Claude subscription quota.
 
-來源是 `claude -p "/usage"`：headless 呼叫、不花額度，doggybag 本身不碰登入憑證。
-輸出是給人看的文字，所以解析集中在這個檔案，格式改版時只需要改這裡。
+The source is `claude -p "/usage"`: a headless call that uses no quota, so doggybag never touches login credentials.
+The output is text meant for people, so all parsing lives in this file and a format change is fixed here.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class UsageError(Exception):
 
 @dataclass
 class Window:
-    """一個額度窗口。resets_at 為 None 表示窗口尚未開始或讀不到 reset 時間。"""
+    """One quota window. resets_at is None when the window has not started or the reset time is unreadable."""
 
     used: int
     resets_at: datetime | None
@@ -57,7 +57,7 @@ class Window:
         return max(timedelta(0), self.resets_at - now)
 
     def behind(self, now: datetime) -> float | None:
-        """用量落後時間進度幾個百分點：時間過了 40%、只用 10%，就是 30。"""
+        """Points by which usage trails the clock: 40% of the time gone with 10% used is 30."""
         left = self.resets_in(now)
         if left is None:
             return None
@@ -73,7 +73,7 @@ class Usage:
 
 
 def parse_reset(text: str, now: datetime) -> datetime | None:
-    """解析 "Nov 22 at 6pm (Asia/Taipei)" 或 "6pm (Asia/Taipei)"。"""
+    """Parse "Nov 22 at 6pm (Asia/Taipei)" or "6pm (Asia/Taipei)"."""
     m = _RESET_RE.search(text)
     if not m:
         return None
@@ -97,7 +97,7 @@ def parse_reset(text: str, now: datetime) -> datetime | None:
             )
         except ValueError:
             return None
-        # 沒有年份：reset 一定在未來，過去超過一天就視為明年
+        # no year given: a reset is always ahead, so more than a day in the past means next year
         if when < local_now - timedelta(days=1):
             when = when.replace(year=when.year + 1)
         return when
@@ -118,7 +118,7 @@ def parse_usage(text: str, now: datetime) -> Usage:
     if session_m:
         five = Window(int(session_m[1]), parse_reset(session_m[2] or "", now), FIVE_HOURS)
     else:
-        # 沒有 session 那一行：視為 5 小時窗口尚未開始
+        # no session line: treat the 5-hour window as not started
         five = Window(0, None, FIVE_HOURS)
     return Usage(five, week, text)
 

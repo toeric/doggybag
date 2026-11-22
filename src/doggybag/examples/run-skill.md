@@ -1,9 +1,8 @@
 ---
-# Runs one of your own Claude Code skills.
-# A skill lives in .claude/skills/<name>/SKILL.md in the repo, or in ~/.claude/skills/.
+# Runs one of your own Claude Code skills. Replace /my-skill with its name.
 when: idle
 in: ~/path/to/your/repo
-tools: Read, Grep, Glob
 cooldown: 12h
+enabled: false
 ---
 /my-skill
