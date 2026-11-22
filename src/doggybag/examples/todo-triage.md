@@ -1,16 +1,8 @@
 ---
-# When to run: leftover, idle or behind (or your own numbers, see the README).
+# Lists the five TODO comments most worth fixing.
 when: leftover
-
-# The folder Claude works in.
 in: ~/path/to/your/repo
-
-# What Claude may do without asking. This task only reads.
-tools: Read, Grep, Glob
-
 cooldown: 6h
-
-# Change to true when you are ready.
 enabled: false
 ---
 Find the TODO and FIXME comments in this repository.

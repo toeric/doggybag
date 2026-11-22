@@ -364,6 +364,21 @@ class Examples(unittest.TestCase):
                 self.assertIsNone(t.error, item.name)
                 self.assertTrue(t.whens, item.name)
 
+    def test_examples_all_have_the_same_shape(self):
+        examples = resources.files("doggybag").joinpath("examples")
+        names = sorted(item.name for item in examples.iterdir() if item.is_file())
+        self.assertTrue(all(n.endswith(".md") for n in names), names)
+        for item in examples.iterdir():
+            lines = item.read_text().splitlines()
+            self.assertEqual(lines[0], "---", item.name)
+            self.assertTrue(lines[1].startswith("# "), item.name)
+            self.assertTrue(lines[2].startswith("when: "), item.name)
+            self.assertEqual(lines[3], "in: ~/path/to/your/repo", item.name)
+            closing = lines.index("---", 1)
+            self.assertEqual(lines[closing - 1], "enabled: false", item.name)
+            # 設定區塊裡除了第一行的說明，不再有其他註解或空行
+            self.assertTrue(all(l and not l.startswith("#") for l in lines[2:closing]), item.name)
+
     def test_starter_is_switched_off_and_reads_only(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "10-todo-triage.md"

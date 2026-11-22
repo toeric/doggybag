@@ -70,16 +70,132 @@ week   95% left · resets in 6d5h (Sat 20:59) · +6 behind pace
 
 ## 範例
 
-`setup` 也會把這些範例複製到 `~/.doggybag/tasks/examples/`。要用哪一個，就把它複製到 `~/.doggybag/tasks/`，再改 `in:` 後面的資料夾。
+六件現成的工作。`setup` 會把它們複製到 `~/.doggybag/tasks/examples/`。
+
+**使用方式：**把檔案複製到 `~/.doggybag/tasks/`，改 `in:` 後面的資料夾，再把 `enabled: false` 改成 `true`。
+
+每個範例的排列方式都一樣：第一行說明它做什麼，接著是設定，最後是工作的文字。
 
 | 範例 | 做什麼 | 什麼時候跑 | 會改你的檔案嗎 |
 |---|---|---|---|
-| [todo-triage.md](src/doggybag/examples/todo-triage.md) | 列出最值得修的五個 TODO 註解 | 額度快重置而且還有剩 | 不會 |
-| [docs-check.md](src/doggybag/examples/docs-check.md) | 找出 README 和程式碼不一致的地方 | 這週的額度用得比較慢 | 不會 |
-| [write-tests.md](src/doggybag/examples/write-tests.md) | 幫測試最少的檔案寫測試 | 一小時沒人用 Claude，而且這週用得比較慢 | 會，只改 tests 資料夾 |
-| [run-skill.md](src/doggybag/examples/run-skill.md) | 跑你自己的 Claude Code skill | 一小時沒人用 Claude | 看 skill 的內容 |
-| [review-commits.md](src/doggybag/examples/review-commits.md) | 用 `run:` 整理最近的 commit，交給 Claude 檢查 | 額度快重置而且還有剩 | 不會 |
-| [own-agent.md](src/doggybag/examples/own-agent.md) | 用 `run:` 把文字交給你自己的程式 | 一週的最後一天，而且還剩很多 | 看你的程式 |
+| [todo-triage.md](src/doggybag/examples/todo-triage.md?plain=1) | 列出最值得修的五個 TODO 註解 | 額度快重置而且還有剩 | 不會 |
+| [docs-check.md](src/doggybag/examples/docs-check.md?plain=1) | 找出 README 和程式碼不一致的地方 | 這週的額度用得比較慢 | 不會 |
+| [write-tests.md](src/doggybag/examples/write-tests.md?plain=1) | 幫測試最少的檔案寫測試。這件工作可以改檔案 | 一小時沒人用 Claude，而且這週用得比較慢 | 會，只改 tests 資料夾 |
+| [run-skill.md](src/doggybag/examples/run-skill.md?plain=1) | 跑你自己的 Claude Code skill。把 /my-skill 換成它的名稱 | 一小時沒人用 Claude | 看 skill 的內容 |
+| [review-commits.md](src/doggybag/examples/review-commits.md?plain=1) | 用 run: 整理最近的 commit，交給 Claude 檢查 | 額度快重置而且還有剩 | 不會 |
+| [own-agent.md](src/doggybag/examples/own-agent.md?plain=1) | 用 run: 把下面的文字交給你自己的程式 | 一週的最後一天，而且還剩很多 | 看你的程式 |
+
+每個範例的完整內容：
+
+<details>
+<summary><code>todo-triage.md</code></summary>
+
+```markdown
+---
+# Lists the five TODO comments most worth fixing.
+when: leftover
+in: ~/path/to/your/repo
+cooldown: 6h
+enabled: false
+---
+Find the TODO and FIXME comments in this repository.
+
+Pick the five that are most worth fixing. For each one, give the file and line,
+say in one sentence what is wrong, and say how much work a fix would be.
+```
+
+</details>
+
+<details>
+<summary><code>docs-check.md</code></summary>
+
+```markdown
+---
+# Finds places where the README no longer matches the code.
+when: behind
+in: ~/path/to/your/repo
+cooldown: 1d
+enabled: false
+---
+Compare README.md with the code in this repository.
+
+List every place where the README describes something the code no longer does:
+commands, options, file paths, or behaviour. Quote the README line and say what
+the code does instead. If everything matches, say so in one line.
+```
+
+</details>
+
+<details>
+<summary><code>write-tests.md</code></summary>
+
+```markdown
+---
+# Writes tests for the least-tested file. Allowed to change files.
+when: idle and behind
+in: ~/path/to/your/repo
+tools: Read, Grep, Glob, Edit, Write
+cooldown: 1d
+timeout: 45m
+enabled: false
+---
+Find the source file in this repository that has the least test coverage.
+
+Write tests for it in the existing tests folder, following the style of the
+tests that are already there. Only add or change files inside the tests folder.
+End with a list of the files you touched.
+```
+
+</details>
+
+<details>
+<summary><code>run-skill.md</code></summary>
+
+```markdown
+---
+# Runs one of your own Claude Code skills. Replace /my-skill with its name.
+when: idle
+in: ~/path/to/your/repo
+cooldown: 12h
+enabled: false
+---
+/my-skill
+```
+
+</details>
+
+<details>
+<summary><code>review-commits.md</code></summary>
+
+```markdown
+---
+# Uses run: to collect the latest commits and pipe them to Claude for review.
+when: leftover
+in: ~/path/to/your/repo
+run: git log -3 --patch | claude -p "Review these commits. List anything that looks risky."
+cooldown: 6h
+enabled: false
+---
+```
+
+</details>
+
+<details>
+<summary><code>own-agent.md</code></summary>
+
+```markdown
+---
+# Uses run: to hand the text below to a program of your own.
+when: week.resets_in <= 1d and week.remaining >= 40
+in: ~/path/to/your/repo
+run: python3 ~/agents/my_agent.py
+cooldown: 1d
+enabled: false
+---
+Find the TODO comments in this repository and pick the five most worth fixing.
+```
+
+</details>
 
 ## 結果在哪裡
 
