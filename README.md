@@ -59,6 +59,7 @@ You can also [write your own numbers](docs/reference.md#conditions).
 | `waddlebag setup` | Checks your environment and starts the 10-minute schedule |
 | `waddlebag status` | Shows your quota and what each job is waiting for |
 | `waddlebag run` | Checks once, right now. `waddlebag run <job>` runs that job immediately |
+| `waddlebag logs` | Lists recent runs. `waddlebag logs <job>` shows that job's latest answer |
 
 ## Examples
 
