@@ -94,6 +94,16 @@ class Conditions(unittest.TestCase):
     def test_percent_sign_is_optional(self):
         self.assertEqual(parse_when("week.remaining >= 40%")[0].value, 40)
 
+    def test_durations_can_combine_units_the_way_status_prints_them(self):
+        from waddlebag.conditions import format_duration, parse_duration
+
+        self.assertEqual(parse_when("idle >= 5h10m")[0].value, timedelta(hours=5, minutes=10))
+        for text in ("45m", "6h", "1.5d", "5h10m", "2d6h"):
+            self.assertEqual(parse_duration(format_duration(parse_duration(text))), parse_duration(text), text)
+        for text in ("10m5h", "5h5h", "5", "h"):
+            with self.assertRaises(ConditionError, msg=text):
+                parse_duration(text)
+
     def test_bad_conditions(self):
         for text in ("tokens > 5", "idle >= soon", "5h.remaining >= lots", "5h.remaining"):
             with self.assertRaises(ConditionError, msg=text):
