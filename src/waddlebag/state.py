@@ -145,9 +145,9 @@ def record_run(root: Path, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def last_run(root: Path, task_name: str) -> dict | None:
-    """The most recent run of this task."""
-    found = None
+def runs(root: Path) -> list[dict]:
+    """Every recorded run, oldest first. Unreadable lines are skipped."""
+    found = []
     try:
         with open(root / "runs.jsonl", "r", encoding="utf-8") as f:
             for line in f:
@@ -155,8 +155,14 @@ def last_run(root: Path, task_name: str) -> dict | None:
                     entry = json.loads(line)
                 except ValueError:
                     continue
-                if entry.get("task") == task_name:
-                    found = entry
+                if isinstance(entry, dict) and {"task", "ended"} <= entry.keys():
+                    found.append(entry)
     except OSError:
-        return None
+        pass
     return found
+
+
+def last_run(root: Path, task_name: str) -> dict | None:
+    """The most recent run of this task."""
+    mine = [entry for entry in runs(root) if entry["task"] == task_name]
+    return mine[-1] if mine else None

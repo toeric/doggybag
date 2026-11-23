@@ -7,6 +7,7 @@ import shutil
 import sys
 from datetime import datetime
 from importlib import resources
+from pathlib import Path
 
 from . import __version__, launchd, state
 from .conditions import Context, format_duration
@@ -28,20 +29,29 @@ def _window_line(ui: UI, label: str, w: Window, now: datetime) -> str:
     return head + ui.dim(f" · resets in {format_duration(w.resets_in(now))}")
 
 
-def _last_time(previous: dict) -> str:
-    took = format_duration(datetime.fromtimestamp(previous["ended"]) - datetime.fromtimestamp(previous["started"]))
+def _outcome(previous: dict) -> str:
+    started = previous.get("started", previous["ended"])
+    took = format_duration(datetime.fromtimestamp(previous["ended"]) - datetime.fromtimestamp(started))
+    code = previous.get("exit")
     if previous.get("stopped") == "reserve":
         what = "dropped to save your quota"
     elif previous.get("stopped") == "timeout":
         what = "dropped at its time limit"
-    elif previous["exit"] == 0:
+    elif code == 0:
         what = f"done in {took}"
-    elif previous["exit"] == EXIT_NOTHING_TO_DO:
+    elif code == EXIT_NOTHING_TO_DO:
         what = "had nothing to do"
     else:
-        what = f"didn't work out (exit {previous['exit']})"
-    when = datetime.fromtimestamp(previous["ended"]).strftime("%b %d %H:%M")
-    return f"last time ({when}): {what} → {short(previous.get('log', '?'))}"
+        what = f"didn't work out (exit {code})"
+    return what
+
+
+def _when(previous: dict) -> str:
+    return datetime.fromtimestamp(previous["ended"]).strftime("%b %d %H:%M")
+
+
+def _last_time(previous: dict) -> str:
+    return f"last time ({_when(previous)}): {_outcome(previous)} → {short(previous.get('log', '?'))}"
 
 
 def _ui(root) -> UI:
@@ -196,6 +206,38 @@ def cmd_run(args) -> int:
     return run_cycle(state.home(), only=args.task)
 
 
+def cmd_logs(args) -> int:
+    root = state.home()
+    ui = _ui(root)
+    runs = state.runs(root)
+    if args.task:
+        mine = [r for r in runs if args.task in (r.get("task"), Path(r.get("task", "")).stem)]
+        if not mine:
+            ui.line(f"{args.task} hasn't run yet.")
+            return 1
+        last = mine[-1]
+        log = Path(last.get("log", ""))
+        ui.line(ui.dim(f"{last['task']} · {_when(last)} · {_outcome(last)} · {short(log)}"))
+        ui.line()
+        try:
+            ui.line(log.read_text(encoding="utf-8", errors="replace").rstrip())
+        except OSError:
+            ui.line(ui.red("The log file is gone."))
+            return 1
+        return 0
+
+    if not runs:
+        ui.line("Nothing has run yet.")
+        return 0
+    recent = runs[-args.count:][::-1]
+    width = max(len(r.get("task", "")) for r in recent)
+    for r in recent:
+        ui.line(f"{ui.dim(_when(r))}  {r.get('task', '?'):<{width}}  {_outcome(r)}")
+    ui.line()
+    ui.line(ui.dim("`waddlebag logs <job>` shows a job's latest answer"))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="waddlebag",
@@ -215,6 +257,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("run", help="check once and run the jobs whose conditions hold")
     p.add_argument("task", nargs="?", help="run this one job now, ignoring its conditions")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("logs", help="list recent runs, or show a job's latest answer")
+    p.add_argument("task", nargs="?", help="show this job's latest log")
+    p.add_argument("-n", dest="count", type=int, default=10, help="how many recent runs to list (default 10)")
+    p.set_defaults(func=cmd_logs)
 
     args = parser.parse_args(argv)
     try:

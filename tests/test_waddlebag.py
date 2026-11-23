@@ -488,6 +488,41 @@ class Schedule(unittest.TestCase):
         self.assertIn("/opt/tools", data["EnvironmentVariables"]["PATH"])
 
 
+class Logs(unittest.TestCase):
+    def logs(self, *argv):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest import mock
+
+        from waddlebag import cli
+
+        out = StringIO()
+        with mock.patch.dict("os.environ", {"WADDLEBAG_HOME": self.root}), redirect_stdout(out):
+            code = cli.main(["logs", *argv])
+        return code, out.getvalue()
+
+    def test_lists_runs_and_shows_the_latest_answer(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.root = d
+            self.assertEqual(self.logs(), (0, "Nothing has run yet.\n"))
+            for i, answer in enumerate(("old answer", "new answer")):
+                log = Path(d) / f"a-{i}.log"
+                log.write_text(answer + "\n")
+                start = NOW.timestamp() + i * 3600
+                state.record_run(
+                    Path(d),
+                    {"task": "10-a.md", "started": start, "ended": start + 60, "exit": 0, "log": str(log)},
+                )
+            code, out = self.logs()
+            self.assertEqual(code, 0)
+            self.assertEqual(out.count("10-a.md  done in 1m"), 2)
+            code, out = self.logs("10-a")
+            self.assertEqual(code, 0)
+            self.assertIn("new answer", out)
+            self.assertNotIn("old answer", out)
+            self.assertEqual(self.logs("nope")[0], 1)
+
+
 class Settings(unittest.TestCase):
     def load(self, text):
         with tempfile.TemporaryDirectory() as d:
