@@ -217,7 +217,12 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_run)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except state.ConfigError as e:
+        ui = UI()
+        ui.say("sad", ui.red(f"I can't read {short(state.home() / 'config.toml')}."), str(e))
+        return 1
 
 
 if __name__ == "__main__":

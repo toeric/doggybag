@@ -46,14 +46,50 @@ class Config:
     claude: str | None = None
 
 
+class ConfigError(Exception):
+    pass
+
+
+# setting -> (accepted types, how to describe them)
+_SETTINGS = {
+    "reserve_5h": ((int, float), "a number from 0 to 100"),
+    "reserve_week": ((int, float), "a number from 0 to 100"),
+    "notify": ((bool,), "true or false"),
+    "mascot": ((bool,), "true or false"),
+    "interval_minutes": ((int,), "a whole number of minutes, at least 1"),
+    "claude": ((str,), "the path to the claude command, in quotes"),
+}
+
+
+def _check(key: str, value) -> None:
+    types, wanted = _SETTINGS[key]
+    # TOML true/false are Python bools, and bool is a kind of int: don't let them pass as numbers
+    ok = isinstance(value, types) and not (isinstance(value, bool) and bool not in types)
+    if ok and key.startswith("reserve_"):
+        ok = 0 <= value <= 100
+    if ok and key == "interval_minutes":
+        ok = value >= 1
+    if not ok:
+        raise ConfigError(f"`{key}` should be {wanted}, not {value!r}")
+
+
 def load_config(root: Path) -> Config:
+    """Read config.toml. Raises ConfigError with a one-line reason when it is broken."""
     cfg = Config()
     path = root / "config.toml"
-    if path.exists():
+    if not path.exists():
+        return cfg
+    try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        for key in ("reserve_5h", "reserve_week", "notify", "mascot", "interval_minutes", "claude"):
-            if key in data:
-                setattr(cfg, key, data[key])
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(str(e)) from e
+    except (OSError, UnicodeDecodeError) as e:
+        raise ConfigError(f"cannot read the file: {e}") from e
+    for key, value in data.items():
+        if key not in _SETTINGS:
+            raise ConfigError(f"unknown setting `{key}` (known: {', '.join(_SETTINGS)})")
+        _check(key, value)
+        setattr(cfg, key, value)
     return cfg
 
 
