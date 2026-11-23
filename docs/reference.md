@@ -171,6 +171,7 @@ The penguin and the colours only appear when waddlebag is writing to a terminal.
 ## Known limitations
 
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
+- **macOS lists the schedule as a background item.** After `setup`, macOS says waddlebag can run in the background. Switching it off in System Settings → General → Login Items & Extensions stops the schedule, and `status` says so.
 - **Automatic scheduling is macOS-only for now.** On Linux, call `waddlebag run` from cron.
 - **Quota comes from the text output of `claude -p "/usage"`.** That call uses no quota, and waddlebag never touches your login credentials, but parsing will break if the output format changes (last verified with Claude Code 2.1.330).
 - **Usage has 1% resolution.** `idle` cannot see very small amounts of use.
