@@ -294,6 +294,13 @@ class Deciding(TaskCase):
             self.assertFalse(d.run)
             self.assertIn("I can't find the folder /no/such", d.headline)
 
+    def test_switched_off_job_with_missing_folder_is_just_off(self):
+        # the starter job after setup: switched off, folder still the placeholder
+        text = "---\nwhen: leftover\nin: /no/such\nenabled: false\n---\nHi\n"
+        d = self.decide(text)
+        self.assertEqual((d.kind, d.headline), ("off", "switched off"))
+        self.assertIn("I can't find the folder", self.decide(text, force=True).headline)
+
     def test_cooldown_blocks_but_exit_75_does_not(self):
         text = "---\nwhen: idle\ncooldown: 6h\n---\nHi\n"
         ended = (NOW - timedelta(hours=1)).timestamp()
