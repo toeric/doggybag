@@ -127,7 +127,7 @@ Durations use `m`, `h` and `d`.
 | `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
 | `tools` | What Claude may do without asking. `none` allows nothing. Not with `run` | `Read, Grep, Glob` |
 | `model` | Which Claude model to use. Not with `run` | Your Claude Code default |
-| `cooldown` | How long before the task can trigger again after a run | `5h` |
+| `cooldown` | How long before the task can trigger again after it is done. After a failure or timeout it can try again after 1h (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
 | `timeout` | The task is stopped if it runs longer than this | `1h` |
 | `enabled` | Set to `false` to switch the task off | `true` |
 

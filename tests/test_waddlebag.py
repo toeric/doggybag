@@ -309,6 +309,18 @@ class Deciding(TaskCase):
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 75, "stopped": None})
         self.assertTrue(self.decide(text).run)
 
+    def test_failures_retry_sooner_and_reserve_stops_do_not_rest(self):
+        text = "---\nwhen: idle\ncooldown: 6h\n---\nHi\n"
+        ended = (NOW - timedelta(minutes=30)).timestamp()
+        for exit_code, stopped in ((1, None), (-15, "timeout")):
+            state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": exit_code, "stopped": stopped})
+            self.assertIn("resting, back in 30m", self.decide(text).headline)
+        state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": -15, "stopped": "reserve"})
+        self.assertTrue(self.decide(text).run)
+        long_ago = (NOW - timedelta(hours=2)).timestamp()
+        state.record_run(self.root, {"task": "10-task.md", "ended": long_ago, "exit": 1, "stopped": None})
+        self.assertTrue(self.decide(text).run)
+
 
 class Executing(TaskCase):
     def execute(self, task, cfg=QUIET, out=None):

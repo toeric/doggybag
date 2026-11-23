@@ -27,6 +27,7 @@ from .usage import Usage, UsageError, fetch_usage, find_claude
 EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a failure, and no cooldown
 WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
 KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
+RETRY_AFTER_FAILURE = timedelta(hours=1)  # rest after a failure or timeout, if shorter than the cooldown
 
 
 def now_local() -> datetime:
@@ -59,6 +60,19 @@ def reserve_shortfall(usage: Usage, cfg: state.Config) -> tuple[int, float] | No
     return None
 
 
+def rest_after(previous: dict, cooldown: timedelta) -> timedelta | None:
+    """How long a task rests after this run.
+
+    Done: the full cooldown. Failed or timed out: retry sooner, the problem may be fixed by then.
+    Nothing to do, or stopped by the reserve brake: no rest, it waits for its conditions and quota anyway.
+    """
+    if previous.get("exit") == EXIT_NOTHING_TO_DO or previous.get("stopped") == "reserve":
+        return None
+    if previous.get("exit") == 0 and not previous.get("stopped"):
+        return cooldown
+    return min(cooldown, RETRY_AFTER_FAILURE)
+
+
 def decide(
     task: Task, ctx: Context, cfg: state.Config, root: Path, force: bool = False
 ) -> Decision:
@@ -78,9 +92,9 @@ def decide(
         return Decision(False, "off", f"only when you ask: waddlebag run {task.path.stem}")
 
     previous = state.last_run(root, task.name)
-    if previous and previous.get("exit") != EXIT_NOTHING_TO_DO:
-        since = ctx.now.timestamp() - previous["ended"]
-        left = task.cooldown.total_seconds() - since
+    rest = rest_after(previous, task.cooldown) if previous else None
+    if rest:
+        left = rest.total_seconds() - (ctx.now.timestamp() - previous["ended"])
         if left > 0:
             return Decision(False, "resting", f"resting, back in {format_duration(timedelta(seconds=left))}")
 
