@@ -481,5 +481,50 @@ class Schedule(unittest.TestCase):
         self.assertIn("/opt/tools", data["EnvironmentVariables"]["PATH"])
 
 
+class Settings(unittest.TestCase):
+    def load(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "config.toml").write_text(text, encoding="utf-8")
+            return state.load_config(Path(d))
+
+    def test_default_file_loads(self):
+        self.assertEqual(self.load(state.DEFAULT_CONFIG), state.Config())
+
+    def test_values_are_read(self):
+        cfg = self.load("reserve_5h = 20.5\nmascot = false\ninterval_minutes = 5\n")
+        self.assertEqual((cfg.reserve_5h, cfg.mascot, cfg.interval_minutes), (20.5, False, 5))
+
+    def test_broken_files_say_what_is_wrong(self):
+        cases = {
+            "reserve_5h = \n": "line 1",
+            'interval_minutes = "ten"\n': "`interval_minutes` should be a whole number",
+            "interval_minutes = 0\n": "`interval_minutes`",
+            "reserve_week = 150\n": "`reserve_week` should be a number from 0 to 100",
+            "reserve_5h = true\n": "`reserve_5h`",
+            'notify = "yes"\n': "`notify` should be true or false",
+            "intervall_minutes = 5\n": "unknown setting `intervall_minutes`",
+        }
+        for text, message in cases.items():
+            with self.subTest(text=text):
+                with self.assertRaises(state.ConfigError) as cm:
+                    self.load(text)
+                self.assertIn(message, str(cm.exception))
+
+    def test_commands_report_a_broken_file_without_a_traceback(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest import mock
+
+        from waddlebag import cli
+
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "config.toml").write_text('interval_minutes = "ten"\n', encoding="utf-8")
+            out = StringIO()
+            with mock.patch.dict("os.environ", {"WADDLEBAG_HOME": d}), redirect_stdout(out):
+                for command in ("status", "run"):
+                    self.assertEqual(cli.main([command]), 1)
+            self.assertIn("`interval_minutes` should be a whole number", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
