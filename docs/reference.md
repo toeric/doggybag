@@ -116,7 +116,7 @@ The three words are short for:
 | `idle` | How long since anyone used quota | `idle >= 60m` |
 
 `behind` works like this: if 40% of the window's time has passed and you have used 10%, you are 30 behind.
-Durations use `m`, `h` and `d`.
+Durations use `m`, `h` and `d`, alone or combined, largest first: `45m`, `6h`, `5h10m`, `2d6h`.
 
 ## All settings
 

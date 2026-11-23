@@ -30,7 +30,11 @@ PRESETS = {
 }
 
 _CLAUSE_RE = re.compile(r"^\s*([a-z0-9_.]+)\s*(>=|<=|>|<)\s*(\S+)\s*$", re.I)
-_DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(m|h|d)$", re.I)
+# one or more parts, largest unit first, each unit at most once: 45m, 6h, 1.5d, 5h10m, 2d6h
+_DURATION_RE = re.compile(
+    r"^(?=\d)(?:(?P<d>\d+(?:\.\d+)?)\s*d\s*)?(?:(?P<h>\d+(?:\.\d+)?)\s*h\s*)?(?:(?P<m>\d+(?:\.\d+)?)\s*m)?$",
+    re.I,
+)
 _OPS = {
     ">=": lambda a, b: a >= b,
     "<=": lambda a, b: a <= b,
@@ -45,9 +49,10 @@ class ConditionError(Exception):
 
 def parse_duration(text: str) -> timedelta:
     m = _DURATION_RE.match(text.strip())
-    if not m:
-        raise ConditionError(f"'{text}' is not a duration (use e.g. 45m, 6h, 2d)")
-    return timedelta(**{{"m": "minutes", "h": "hours", "d": "days"}[m[2].lower()]: float(m[1])})
+    if not m or not any(m.groupdict().values()):
+        raise ConditionError(f"'{text}' is not a duration (use e.g. 45m, 6h, 2d, 5h10m)")
+    parts = {unit: float(value) for unit, value in m.groupdict().items() if value}
+    return timedelta(days=parts.get("d", 0), hours=parts.get("h", 0), minutes=parts.get("m", 0))
 
 
 def format_duration(d: timedelta) -> str:
