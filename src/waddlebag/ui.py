@@ -79,6 +79,7 @@ class UI:
         height = max(len(art), len(lines))
         art_top = (height - len(art)) // 2
         text_top = (height - len(lines)) // 2
+        self._write("")  # keep the penguin's head off whatever was printed above
         for row in range(height):
             picture = art[row - art_top] if art_top <= row < art_top + len(art) else " " * mascot.WIDTH
             text = lines[row - text_top] if text_top <= row < text_top + len(lines) else ""
