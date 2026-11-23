@@ -60,8 +60,9 @@ class UI:
     def blue(self, text: str) -> str:
         return self._style("blue", text)
 
-    def bar(self, percent_left: float) -> str:
-        filled = max(0, min(BAR_CELLS, round(percent_left / 100 * BAR_CELLS)))
+    def bar(self, percent_used: float) -> str:
+        """Fill the bar with what is used, the way Claude Code's own /usage does."""
+        filled = max(0, min(BAR_CELLS, round(percent_used / 100 * BAR_CELLS)))
         return self._style("orange", "█" * filled) + self.dim("░" * (BAR_CELLS - filled))
 
     # -- output ----------------------------------------------------------------------------

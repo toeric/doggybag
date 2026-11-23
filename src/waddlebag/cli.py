@@ -22,7 +22,7 @@ _MARKS = {"ready": "●", "waiting": "○", "resting": "○", "off": "–", "pro
 
 
 def _window_line(ui: UI, label: str, w: Window, now: datetime) -> str:
-    head = f"{label:<5} {ui.bar(w.remaining)}  {w.remaining}% left"
+    head = f"{label:<5} {ui.bar(w.used)} {w.used:>3}% used"
     if w.resets_at is None:
         return head + ui.dim(" · no window open")
     return head + ui.dim(f" · resets in {format_duration(w.resets_in(now))}")
