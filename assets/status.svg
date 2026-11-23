@@ -145,13 +145,12 @@
 <text x="206.8" y="89.0" fill="#d6dae0" xml:space="preserve">checking your quota...</text>
 <text x="206.8" y="125.0" fill="#d6dae0" xml:space="preserve">5h    </text>
 <rect x="257.2" y="115.0" width="84.0" height="12" fill="#3a3f48"/>
-<rect x="257.2" y="115.0" width="50.4" height="12" fill="#f5a03c"/>
-<text x="341.2" y="125.0" fill="#d6dae0" xml:space="preserve">  60% left</text>
+<rect x="257.2" y="115.0" width="33.6" height="12" fill="#f5a03c"/>
+<text x="341.2" y="125.0" fill="#d6dae0" xml:space="preserve">  40% used</text>
 <text x="425.2" y="125.0" fill="#8a909a" xml:space="preserve"> · resets in 2h55m</text>
 <text x="206.8" y="143.0" fill="#d6dae0" xml:space="preserve">week  </text>
 <rect x="257.2" y="133.0" width="84.0" height="12" fill="#3a3f48"/>
-<rect x="257.2" y="133.0" width="84.0" height="12" fill="#f5a03c"/>
-<text x="341.2" y="143.0" fill="#d6dae0" xml:space="preserve">  95% left</text>
+<text x="341.2" y="143.0" fill="#d6dae0" xml:space="preserve">   5% used</text>
 <text x="425.2" y="143.0" fill="#8a909a" xml:space="preserve"> · resets in 6d5h</text>
 <text x="206.8" y="161.0" fill="#8a909a" xml:space="preserve">quiet for 12m · I check every 10 minutes</text>
 <text x="22.0" y="215.0" fill="#8fd694" xml:space="preserve">●</text>

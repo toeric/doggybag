@@ -456,7 +456,7 @@ class Penguin(unittest.TestCase):
         ui = UI(write=lines.append, fancy=False)
         ui.say("happy", ui.green("Packed!"), ui.dim("second line"))
         self.assertEqual(lines, ["Packed!", "second line"])
-        self.assertEqual(ui.bar(60), "██████░░░░")
+        self.assertEqual(ui.bar(40), "████░░░░░░")
 
     def test_fancy_mode_puts_the_words_beside_the_penguin(self):
         lines = []
