@@ -118,6 +118,7 @@ def cmd_setup(args) -> int:
             ui.say("sad", ui.red("I couldn't set up the schedule."), ui.dim(str(e)))
             return 1
         steps.append(f"{ok} I'll check every {cfg.interval_minutes} minutes while this Mac is awake")
+        steps.append(ui.dim("  (macOS may tell you I can run in the background: that's this schedule)"))
     else:
         steps.append(ui.dim("· I can only schedule myself on macOS for now. Add this to cron:"))
         steps.append(ui.dim(f"    */{cfg.interval_minutes} * * * * {sys.executable} -m waddlebag run"))
@@ -151,6 +152,10 @@ def cmd_status(args) -> int:
 
     if sys.platform == "darwin" and not launchd.is_installed():
         checking = "not checking on my own (run `waddlebag setup`)"
+    elif sys.platform == "darwin" and not launchd.is_loaded():
+        checking = ui.yellow(
+            "my schedule is switched off: turn on waddlebag in Login Items, or run `waddlebag setup`"
+        )
     else:
         checking = f"I check every {cfg.interval_minutes} minutes"
     ui.say(

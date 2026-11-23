@@ -487,6 +487,19 @@ class Schedule(unittest.TestCase):
         self.assertIn("<false/>", text)
         self.assertIn("/opt/tools", data["EnvironmentVariables"]["PATH"])
 
+    def test_starts_the_waddlebag_script_when_installed(self):
+        # macOS names the background item after this program, so it should not be plain python
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as d:
+            python = Path(d) / "python"
+            with mock.patch.object(sys, "executable", str(python)):
+                self.assertEqual(launchd.program(), [str(python), "-m", "waddlebag", "run"])
+                script = Path(d) / "waddlebag"
+                script.write_text("#!/bin/sh\n")
+                script.chmod(0o755)
+                self.assertEqual(launchd.program(), [str(script), "run"])
+
 
 class Settings(unittest.TestCase):
     def load(self, text):

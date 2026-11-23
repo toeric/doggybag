@@ -19,6 +19,27 @@ def is_installed() -> bool:
     return plist_path().exists()
 
 
+def is_loaded() -> bool:
+    """Whether launchd actually has the schedule: the plist can exist while the user has switched it off."""
+    domain = f"gui/{os.getuid()}"
+    if _launchctl("print", f"{domain}/{LABEL}").returncode != 0:
+        return False
+    disabled = _launchctl("print-disabled", domain).stdout
+    return f'"{LABEL}" => disabled' not in disabled and f'"{LABEL}" => true' not in disabled
+
+
+def program() -> list[str]:
+    """The command launchd starts.
+
+    macOS names a background item after the program it starts. Starting `python -m waddlebag` shows up as
+    "python", so prefer the `waddlebag` script that pip installs next to the interpreter.
+    """
+    script = Path(sys.executable).parent / "waddlebag"
+    if script.is_file() and os.access(script, os.X_OK):
+        return [str(script), "run"]
+    return [sys.executable, "-m", "waddlebag", "run"]
+
+
 def build_plist(root: Path, interval_minutes: int, claude: str | None) -> dict:
     # launchd's PATH is short and tasks would not find claude or other tools, so pass the current PATH along
     path_dirs = os.environ.get("PATH", "/usr/bin:/bin").split(os.pathsep)
@@ -31,7 +52,7 @@ def build_plist(root: Path, interval_minutes: int, claude: str | None) -> dict:
         env["WADDLEBAG_HOME"] = str(root)
     return {
         "Label": LABEL,
-        "ProgramArguments": [sys.executable, "-m", "waddlebag", "run"],
+        "ProgramArguments": program(),
         "StartInterval": max(1, int(interval_minutes)) * 60,
         "RunAtLoad": False,
         "EnvironmentVariables": env,
