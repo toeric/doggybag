@@ -501,6 +501,30 @@ class Schedule(unittest.TestCase):
                 self.assertEqual(launchd.program(), [str(script), "run"])
 
 
+class Housekeeping(unittest.TestCase):
+    def test_only_the_newest_logs_of_that_task_are_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            logs = Path(d)
+            for i in range(5):
+                (logs / f"10-todo-2026112{i}-120000.log").write_text("")
+            other = logs / "10-todo-triage-20260101-120000.log"  # a different task whose name starts the same
+            other.write_text("")
+            state.prune_logs(logs, "10-todo", keep=2)
+            self.assertEqual(
+                sorted(p.name for p in logs.iterdir()),
+                ["10-todo-20261123-120000.log", "10-todo-20261124-120000.log", other.name],
+            )
+
+    def test_run_history_is_trimmed(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for i in range(2 * state.KEEP_RUNS + 1):
+                state.record_run(root, {"task": "a.md", "ended": i})
+            lines = (root / "runs.jsonl").read_text().splitlines()
+            self.assertEqual(len(lines), state.KEEP_RUNS)
+            self.assertEqual(state.last_run(root, "a.md")["ended"], 2 * state.KEEP_RUNS)
+
+
 class Settings(unittest.TestCase):
     def load(self, text):
         with tempfile.TemporaryDirectory() as d:

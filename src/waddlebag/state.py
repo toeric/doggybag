@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tomllib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -139,10 +140,31 @@ def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
     return timedelta(seconds=max(0.0, now.timestamp() - state["last_activity"]))
 
 
+KEEP_LOGS = 20  # run logs kept per task
+KEEP_RUNS = 500  # lines kept in runs.jsonl once it passes twice that
+
+
 def record_run(root: Path, entry: dict) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    with open(root / "runs.jsonl", "a", encoding="utf-8") as f:
+    path = root / "runs.jsonl"
+    with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    if len(lines) > 2 * KEEP_RUNS:
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text("".join(lines[-KEEP_RUNS:]), encoding="utf-8")
+        tmp.replace(path)
+
+
+def prune_logs(logs: Path, stem: str, keep: int = KEEP_LOGS) -> None:
+    """Delete all but the newest `keep` run logs of one task. Names end in a sortable timestamp."""
+    pattern = re.compile(re.escape(stem) + r"-\d{8}-\d{6}\.log")
+    mine = sorted(p for p in logs.glob(f"{stem}-*.log") if pattern.fullmatch(p.name))
+    for old in mine[:-keep] if keep > 0 else mine:
+        try:
+            old.unlink()
+        except OSError:
+            pass
 
 
 def last_run(root: Path, task_name: str) -> dict | None:
