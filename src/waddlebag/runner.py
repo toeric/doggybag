@@ -64,6 +64,9 @@ def decide(
 ) -> Decision:
     if task.error:
         return Decision(False, "problem", "I can't read this one", task.error)
+    # a switched-off job is not checked further: the starter job is off and still has a placeholder folder
+    if not task.enabled and not force:
+        return Decision(False, "off", "switched off")
     if not task.cwd.is_dir():
         return Decision(
             False, "problem", f"I can't find the folder {short(task.cwd)}",
@@ -71,8 +74,6 @@ def decide(
         )
     if force:
         return Decision(True, "ready", "", "because you asked")
-    if not task.enabled:
-        return Decision(False, "off", "switched off")
     if not task.whens:
         return Decision(False, "off", f"only when you ask: waddlebag run {task.path.stem}")
 
