@@ -145,7 +145,7 @@ Durations use `m`, `h` and `d`.
 
 The command reports back through its exit code: `0` means done, `75` means "nothing to do right now" (not a failure, and no cooldown), anything else is a failure.
 
-Everything the command prints is written to `~/.waddlebag/logs/`.
+Everything the command prints is written to `~/.waddlebag/logs/`. The newest 20 logs of each task are kept; older ones are deleted.
 
 ## The brake
 

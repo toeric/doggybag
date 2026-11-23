@@ -10,6 +10,7 @@ import fcntl
 import os
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -210,6 +211,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         "log": str(log_path),
     }
     state.record_run(root, entry)
+    state.prune_logs(logs, task.path.stem)
 
     took = format_duration(ended - started)
     where = ui.dim(f"→ {short(log_path)}")
@@ -287,6 +289,7 @@ def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
             now = now_local()
             ctx = Context(usage, state.update_idle(root, usage, now), now)
 
-        if ran == 0 and not only:
+        # only to a person: the scheduler's log would otherwise gain this line every 10 minutes
+        if ran == 0 and not only and sys.stdout.isatty():
             ui.say("sleep", f"Nothing to pack up right now. {ui.blue('z z z')}")
         return 0
