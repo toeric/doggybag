@@ -442,7 +442,7 @@ class Executing(TaskCase):
         self.assertIn(f"cwd={self.work.resolve()}", log)
         self.assertIn("left=77 task=10-task.md", log)
         self.assertEqual(state.last_run(self.root, "10-task.md")["exit"], 3)
-        self.assertIn("Packing up 10-task", lines[0])
+        self.assertIn("Waddling off with 10-task", lines[0])
         self.assertTrue(any("didn't work out (exit 3" in line for line in lines))
 
     def test_run_without_body_sees_empty_input(self):
@@ -913,12 +913,12 @@ class Penguin(unittest.TestCase):
     def test_fancy_mode_puts_the_words_beside_the_penguin(self):
         lines = []
         ui = UI(write=lines.append, fancy=True)
-        ui.say("fish", "Packing up a.md", "because you asked")
+        ui.say("fish", "Waddling off with a", "because you asked")
         height = len(mascot.SPRITES["fish"]) // 2
         self.assertEqual(len(lines), height + 2)  # a blank line, the picture, a blank line
         self.assertEqual((lines[0], lines[-1]), ("", ""))
         plain = [self.strip(line) for line in lines[1:-1]]
-        self.assertEqual(sum("Packing up a.md" in line for line in plain), 1)
+        self.assertEqual(sum("Waddling off with a" in line for line in plain), 1)
         with_text = [line for line in plain if line.strip() and len(line) > mascot.WIDTH]
         for line in with_text:
             self.assertEqual(line[mascot.WIDTH:mascot.WIDTH + 2], "  ")

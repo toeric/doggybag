@@ -267,9 +267,9 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
             env[f"WADDLEBAG_{key}_RESETS_AT"] = str(int(window.resets_at.timestamp()))
 
     name, title = task.path.stem, task.path.stem
-    ui.say("fish", f"Packing up {ui.bold(name)}", ui.dim(reason))
+    ui.say("fish", f"Waddling off with {ui.bold(name)}", ui.dim(reason))
     if cfg.notify:
-        notify(f"Packing up {title}")
+        notify(f"Waddling off with {title}")
 
     stopped = None  # "timeout" or "reserve"
     left = None  # percent left when the reserve brake fired
@@ -370,8 +370,8 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         )
         note = f"Dropped {title}: it ran past its {format_duration(task.timeout)} limit"
     elif code == 0:
-        ui.say("happy", f"{ui.green('Packed!')} {name} is done ({took})", where)
-        note = f"Packed! {title} is done ({took})"
+        ui.say("happy", f"{ui.green('Back!')} {name} is done ({took})", where)
+        note = f"Back! {title} is done ({took})"
     elif code == EXIT_NOTHING_TO_DO:
         ui.say("sleep", f"{name} had nothing to do.", ui.dim("I'll ask again next time."))
         note = None
