@@ -806,6 +806,13 @@ class SetupHints(TaskCase):
         self.assertIsNone(cli._blocked_folder(log))  # an old failure, not the last thing said
 
 
+class InstallScript(unittest.TestCase):
+    def test_install_script_is_valid_sh(self):
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "install.sh"
+        self.assertEqual(subprocess.run(["sh", "-n", str(script)]).returncode, 0)
+
+
 class Examples(unittest.TestCase):
     def test_every_example_card_is_valid(self):
         examples = resources.files("waddlebag").joinpath("examples")
