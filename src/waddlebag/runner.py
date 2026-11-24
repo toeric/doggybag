@@ -118,7 +118,10 @@ def decide(
     if force:
         return Decision(True, "ready", "", "because you asked")
     if not task.whens:
-        return Decision(False, "off", f"only when you ask: waddlebag run {task.path.stem}")
+        return Decision(
+            False, "problem", "needs you: add a `when:` line",
+            "say when I should run it, e.g. `when: leftover`",
+        )
 
     failures = failures_in_a_row(root, task)
     if failures >= GIVE_UP_AFTER:

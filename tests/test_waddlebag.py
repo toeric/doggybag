@@ -282,7 +282,7 @@ class Cards(TaskCase):
     def test_tilde_in_folder(self):
         self.assertEqual(self.write("---\nin: ~/x\n---\nHi\n").workdir, Path.home() / "x")
 
-    def test_file_without_settings_only_runs_by_hand(self):
+    def test_file_without_settings_is_readable(self):
         t = self.write("Just a prompt.\n")
         self.assertIsNone(t.error)
         self.assertEqual(t.whens, [])
@@ -316,8 +316,10 @@ class Deciding(TaskCase):
     def test_any_when_line_is_enough(self):
         self.assertTrue(self.decide("---\nwhen: idle >= 9h\nwhen: 5h.remaining >= 50\n---\nHi\n").run)
 
-    def test_no_condition_never_runs_automatically(self):
-        self.assertFalse(self.decide("Hi\n").run)
+    def test_no_condition_needs_you_but_runs_by_hand(self):
+        d = self.decide("Hi\n")
+        self.assertEqual((d.run, d.kind), (False, "problem"))
+        self.assertIn("add a `when:` line", d.headline)
         self.assertTrue(self.decide("Hi\n", force=True).run)
 
     def test_error_is_reported(self):
