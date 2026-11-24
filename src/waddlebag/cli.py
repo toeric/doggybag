@@ -1,4 +1,4 @@
-"""The three commands: setup, status, run."""
+"""The commands: setup, status, pack, run, logs."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import datetime
 from importlib import resources
 from pathlib import Path
 
-from . import __version__, launchd, state
+from . import __version__, editing, launchd, state
 from .conditions import Context, format_duration
 from .runner import EXIT_NOTHING_TO_DO, decide, now_local, run_cycle
 from .tasks import discover, ignored
@@ -221,6 +221,35 @@ def cmd_status(args) -> int:
     return 0
 
 
+def _ask(prompt: str) -> str:
+    try:
+        return input(prompt)
+    except EOFError:
+        return "d"  # nobody to answer: keep nothing
+
+
+def cmd_pack(args) -> int:
+    root = state.home()
+    ui = _ui(root)
+    try:
+        target = editing.check_name(args.name, root / "tasks")
+        text = editing.new_template(args.name, Path.cwd(), args.example)
+        result = editing.edit_loop(text, args.name, ask=_ask, say=lambda s: ui.line(ui.red(s)))
+    except editing.EditError as e:
+        ui.say("sad", ui.red(str(e)))
+        return 1
+    if result is None:
+        ui.line("Nothing packed.")
+        return 0
+    cleaned, task = result
+    editing.write_task(target, cleaned)
+    ui.say("happy", f"{ui.green('Packed!')} {args.name}", ui.dim(short(target)))
+    if task.warning:
+        ui.line(ui.yellow(f"! {task.warning}"))
+    ui.line(ui.dim(f"`waddlebag status` shows when it will run · `waddlebag run {args.name}` tries it now"))
+    return 0
+
+
 def cmd_run(args) -> int:
     return run_cycle(state.home(), only=args.task)
 
@@ -272,6 +301,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("status", help="show quota and why each job would or would not run")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("pack", help="hand over a new task: opens your editor on a template")
+    p.add_argument("name", help="the task's name, like todo-triage")
+    p.add_argument("--from", dest="example", metavar="EXAMPLE",
+                   help="start from a built-in example: " + ", ".join(sorted(editing.examples())))
+    p.set_defaults(func=cmd_pack)
 
     p = sub.add_parser("run", help="check once and run the jobs whose conditions hold")
     p.add_argument("task", nargs="?", help="run this one job now, ignoring its conditions")
