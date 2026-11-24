@@ -128,7 +128,7 @@ def cmd_setup(args) -> int:
             ui.say("sad", ui.red("I couldn't set up the schedule."), ui.dim(str(e)))
             return 1
         steps.append(f"{ok} I'll check every {cfg.interval_minutes} minutes while this Mac is awake")
-        steps.append(ui.dim("  (macOS may tell you I can run in the background: that's this schedule)"))
+        steps.append(ui.dim("  (macOS may tell you \"python\" can run in the background: that's this schedule)"))
     else:
         steps.append(ui.dim("· I can only schedule myself on macOS for now. Add this to cron:"))
         steps.append(ui.dim(f"    */{cfg.interval_minutes} * * * * {sys.executable} -m waddlebag run"))
@@ -160,14 +160,17 @@ def cmd_status(args) -> int:
     idle = state.update_idle(root, usage, now)
     ctx = Context(usage, idle, now)
 
+    failed = None  # exit code of the last scheduled run, when it failed
     if sys.platform == "darwin" and not launchd.is_installed():
         checking = "not checking on my own (run `waddlebag setup`)"
     elif sys.platform == "darwin" and not launchd.is_loaded():
         checking = ui.yellow(
-            "my schedule is switched off: turn on waddlebag in Login Items, or run `waddlebag setup`"
+            "my schedule is switched off: turn on \"python\" in Login Items, or run `waddlebag setup`"
         )
     else:
         checking = f"I check every {cfg.interval_minutes} minutes"
+        if sys.platform == "darwin" and launchd.last_exit() not in (None, 0):
+            failed = launchd.last_exit()
     ui.say(
         "look",
         "checking your quota...",
@@ -176,6 +179,11 @@ def cmd_status(args) -> int:
         _window_line(ui, "week", usage.week, now),
         ui.dim(f"quiet for {format_duration(idle)} · {checking}"),
     )
+    if failed is not None:
+        log = short(root / "logs" / "waddlebag.log")
+        ui.line(ui.yellow(f"! my last scheduled check failed (exit {failed}). What it said is in {log}"))
+        if ui.mascot_on:
+            ui.line()  # plain mode adds its own blank line just below
     if not ui.mascot_on:
         ui.line()  # the penguin block ends with a blank line of its own
 

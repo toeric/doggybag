@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from html import escape
@@ -28,15 +29,20 @@ def is_loaded() -> bool:
     return f'"{LABEL}" => disabled' not in disabled and f'"{LABEL}" => true' not in disabled
 
 
+def last_exit() -> int | None:
+    """The exit code of the last scheduled run, as launchd remembers it. None before the first run."""
+    out = _launchctl("print", f"gui/{os.getuid()}/{LABEL}").stdout
+    m = re.search(r"^\s*last exit code = (-?\d+)", out, re.M)
+    return int(m[1]) if m else None
+
+
 def program() -> list[str]:
     """The command launchd starts.
 
-    macOS names a background item after the program it starts. Starting `python -m waddlebag` shows up as
-    "python", so prefer the `waddlebag` script that pip installs next to the interpreter.
+    This has to be the Python interpreter, even though macOS then lists the background item as "python".
+    Starting the `waddlebag` script instead looks nicer, but macOS privacy protection then refuses it
+    access to protected folders such as ~/Documents, and every scheduled run fails (#30).
     """
-    script = Path(sys.executable).parent / "waddlebag"
-    if script.is_file() and os.access(script, os.X_OK):
-        return [str(script), "run"]
     return [sys.executable, "-m", "waddlebag", "run"]
 
 
