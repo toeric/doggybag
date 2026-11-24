@@ -442,7 +442,7 @@ class Executing(TaskCase):
         self.assertIn(f"cwd={self.work.resolve()}", log)
         self.assertIn("left=77 task=10-task.md", log)
         self.assertEqual(state.last_run(self.root, "10-task.md")["exit"], 3)
-        self.assertIn("Packing up 10-task.md", lines[0])
+        self.assertIn("Packing up 10-task", lines[0])
         self.assertTrue(any("didn't work out (exit 3" in line for line in lines))
 
     def test_run_without_body_sees_empty_input(self):
@@ -1013,7 +1013,7 @@ class Logs(unittest.TestCase):
                 )
             code, out = self.logs()
             self.assertEqual(code, 0)
-            self.assertEqual(out.count("10-a.md  done in 1m"), 2)
+            self.assertEqual(out.count("10-a  done in 1m"), 2)
             code, out = self.logs("10-a")
             self.assertEqual(code, 0)
             self.assertIn("new answer", out)

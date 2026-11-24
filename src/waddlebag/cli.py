@@ -47,6 +47,10 @@ def _outcome(previous: dict) -> str:
     return what
 
 
+def _stem(task_file: str) -> str:
+    return Path(task_file).stem
+
+
 def _when(previous: dict) -> str:
     return datetime.fromtimestamp(previous["ended"]).strftime("%b %d %H:%M")
 
@@ -122,7 +126,7 @@ def cmd_setup(args) -> int:
         ui.say(
             "sleep",
             "Okay, I'll stop checking." if removed else "I wasn't checking on a schedule.",
-            ui.dim(f"Your jobs are still in {short(root)}"),
+            ui.dim(f"Your tasks are still in {short(root)}"),
         )
         return 0
 
@@ -238,12 +242,12 @@ def cmd_status(args) -> int:
     if not tasks:
         ui.line("No tasks yet. Go to a project folder and hand me one: waddlebag pack <name>")
         ui.line(ui.dim("(or start from an example: waddlebag pack <name> --from todo-triage)"))
-    width = max((len(t.name) for t in tasks), default=0)
+    width = max((len(t.path.stem) for t in tasks), default=0)
     now_running = running_now(root)
     for task in tasks:
         if now_running and now_running["task"] == task.name:
             took = format_duration(now - datetime.fromtimestamp(now_running["started"]).astimezone())
-            ui.line(f"{ui.green(_MARKS['running'])} {task.name:<{width}}    {ui.green(f'running for {took}')}")
+            ui.line(f"{ui.green(_MARKS['running'])} {task.path.stem:<{width}}    {ui.green(f'running for {took}')}")
             continue
         d = decide(task, ctx, cfg, root)
         mark, headline = _MARKS[d.kind], d.headline
@@ -253,7 +257,7 @@ def cmd_status(args) -> int:
             mark, headline = ui.green(mark), ui.green(headline)
         else:
             mark = ui.dim(mark)
-        ui.line(f"{mark} {task.name:<{width}}    {headline}")
+        ui.line(f"{mark} {task.path.stem:<{width}}    {headline}")
         if d.detail:
             ui.line(ui.dim(f"    {d.detail}"))
         previous = state.last_run(root, task.name)
@@ -263,7 +267,7 @@ def cmd_status(args) -> int:
     skipped = ignored(root / "tasks")
     if skipped:
         ui.line()
-        ui.line(ui.dim(f"· ignoring {', '.join(p.name for p in skipped)}: a job is a .md file"))
+        ui.line(ui.dim(f"· ignoring {', '.join(p.name for p in skipped)}: a task is a .md file"))
     return 0
 
 
@@ -362,7 +366,7 @@ def cmd_logs(args) -> int:
             return 1
         last = mine[-1]
         log = Path(last.get("log", ""))
-        ui.line(ui.dim(f"{last['task']} · {_when(last)} · {_outcome(last)} · {short(log)}"))
+        ui.line(ui.dim(f"{_stem(last['task'])} · {_when(last)} · {_outcome(last)} · {short(log)}"))
         ui.line()
         try:
             ui.line(log.read_text(encoding="utf-8", errors="replace").rstrip())
@@ -375,18 +379,18 @@ def cmd_logs(args) -> int:
         ui.line("Nothing has run yet.")
         return 0
     recent = runs[-args.count:][::-1]
-    width = max(len(r.get("task", "")) for r in recent)
+    width = max(len(_stem(r.get("task", ""))) for r in recent)
     for r in recent:
-        ui.line(f"{ui.dim(_when(r))}  {r.get('task', '?'):<{width}}  {_outcome(r)}")
+        ui.line(f"{ui.dim(_when(r))}  {_stem(r.get('task', '?')):<{width}}  {_outcome(r)}")
     ui.line()
-    ui.line(ui.dim("`waddlebag logs <job>` shows a job's latest answer"))
+    ui.line(ui.dim("`waddlebag logs <task>` shows a task's latest answer"))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="waddlebag",
-        description="Run your own jobs on leftover Claude quota before it resets.",
+        description="Run your own tasks on leftover Claude quota before it resets.",
     )
     parser.add_argument("--version", action="version", version=f"waddlebag {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -396,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--uninstall", action="store_true", help="remove the schedule")
     p.set_defaults(func=cmd_setup)
 
-    p = sub.add_parser("status", help="show quota and why each job would or would not run")
+    p = sub.add_parser("status", help="show quota and what each task is waiting for")
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("pack", help="hand over a new task: opens your editor on a template")
@@ -409,12 +413,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("name", nargs="?", help="the task to change")
     p.set_defaults(func=cmd_edit)
 
-    p = sub.add_parser("run", help="check once and run the jobs whose conditions hold")
-    p.add_argument("task", nargs="?", help="run this one job now, ignoring its conditions")
+    p = sub.add_parser("run", help="check once and run the tasks whose time has come")
+    p.add_argument("task", nargs="?", help="run this one task now, whatever its when:")
     p.set_defaults(func=cmd_run)
 
-    p = sub.add_parser("logs", help="list recent runs, or show a job's latest answer")
-    p.add_argument("task", nargs="?", help="show this job's latest log")
+    p = sub.add_parser("logs", help="list recent runs, or show a task's latest answer")
+    p.add_argument("task", nargs="?", help="show this task's latest answer")
     p.add_argument("-n", dest="count", type=int, default=10, help="how many recent runs to list (default 10)")
     p.set_defaults(func=cmd_logs)
 

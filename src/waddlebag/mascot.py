@@ -27,7 +27,7 @@ PALETTE = {
 }
 
 SPRITES = {
-    # a job finished, or setup went well
+    # a task finished, or setup went well
     "happy": (
         ".R..NNNNNNNN..Y.",
         "...NNWWNNWWNN..P",
@@ -49,7 +49,7 @@ SPRITES = {
         "....NWWWWWWN....",
         "...OOO....OOO...",
     ),
-    # starting a job: a fish carried home by the tail
+    # starting a task: a fish carried home by the tail
     "fish": (
         "..NNNNNNNN......",
         ".NNWWNNWWNN.S.S.",
@@ -82,7 +82,7 @@ SPRITES = {
         ".ZZZOOOZZOOOZZZ.",
         "..ZZZZZZZZZZZZ..",
     ),
-    # a job had to be dropped
+    # a task had to be dropped
     "alarm": (
         ".Z..NNNNNNNN..Z.",
         "NN.NNWWNNWWNN.NN",

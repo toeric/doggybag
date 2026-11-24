@@ -133,7 +133,7 @@ def decide(
 ) -> Decision:
     if task.error:
         return Decision(False, "needs you", "needs you: I can't read this file", task.error)
-    # a switched-off job is not checked further: the starter job is off and still has a placeholder folder
+    # a switched-off task is not checked further, not even its folder
     if not task.enabled and not force:
         return Decision(False, "off", "off")
     if not task.cwd.is_dir():
@@ -266,7 +266,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         if window.resets_at:
             env[f"WADDLEBAG_{key}_RESETS_AT"] = str(int(window.resets_at.timestamp()))
 
-    name, title = task.name, task.path.stem
+    name, title = task.path.stem, task.path.stem
     ui.say("fish", f"Packing up {ui.bold(name)}", ui.dim(reason))
     if cfg.notify:
         notify(f"Packing up {title}")
@@ -280,7 +280,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         prompt_file.seek(0)
         # noted before the task starts, so there is no moment when it runs without a trace
         running = {
-            "task": name,
+            "task": task.name,
             "reason": reason,
             "started": started.timestamp(),
             "beat": started.timestamp(),
@@ -341,7 +341,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
     ended = now_local()
     code = proc.returncode if proc is not None else 127
     entry = {
-        "task": name,
+        "task": task.name,
         "reason": reason,
         "started": started.timestamp(),
         "ended": ended.timestamp(),
@@ -459,7 +459,7 @@ def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
 def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
     with single_instance(root) as acquired:
         if not acquired:
-            ui.say("sleep", "I'm already out on a job.", ui.dim("Skipping this round."))
+            ui.say("sleep", "I'm already out with a task.", ui.dim("Skipping this round."))
             return 0
         # holding the lock means no other run is alive, so a task still noted as running was cut short
         record_cut_short(root, cfg, ui)
@@ -485,7 +485,7 @@ def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
             known = ", ".join(t.path.stem for t in tasks) or "nothing yet"
             tasks = [t for t in tasks if only in (t.name, t.path.stem)]
             if not tasks:
-                ui.say("sad", ui.red(f"I don't know a job called '{only}'."), f"I have: {known}")
+                ui.say("sad", ui.red(f"I don't know a task called '{only}'."), f"I have: {known}")
                 return 1
 
         ran = 0
