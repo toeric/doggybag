@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta
 from importlib import resources
@@ -330,6 +331,42 @@ class Deciding(TaskCase):
         long_ago = (NOW - timedelta(hours=2)).timestamp()
         state.record_run(self.root, {"task": "10-task.md", "ended": long_ago, "exit": 1, "stopped": None})
         self.assertTrue(self.decide(text).run)
+
+
+class GivingUp(TaskCase):
+    TEXT = "---\nwhen: idle\ncooldown: 1m\n---\nx\n"
+
+    def run_ended(self, ago, **entry):
+        state.record_run(self.root, {"task": "10-task.md", "ended": time.time() - ago, **entry})
+
+    def test_three_failures_in_a_row_wait_for_you(self):
+        import os
+        t = self.write(self.TEXT)
+        os.utime(t.path, (time.time() - 10000, time.time() - 10000))
+        self.run_ended(9000, exit=1)
+        self.run_ended(8000, stopped="timeout", exit=-15)
+        self.run_ended(7500, exit=75)  # had nothing to do: doesn't count, doesn't reset
+        self.run_ended(7000, exit=None, stopped="interrupted")
+        d = runner.decide(t, self.live_ctx(), QUIET, self.root)
+        self.assertEqual((d.run, d.kind), (False, "problem"))
+        self.assertIn("3 times in a row", d.headline)
+        # running it by hand is still possible
+        self.assertTrue(runner.decide(t, self.live_ctx(), QUIET, self.root, force=True).run)
+        # saving the file says "try again"
+        os.utime(t.path, None)
+        self.assertTrue(runner.decide(t, self.live_ctx(), QUIET, self.root).run)
+
+    def test_a_good_run_resets_the_count(self):
+        import os
+        t = self.write(self.TEXT)
+        os.utime(t.path, (time.time() - 10000, time.time() - 10000))
+        self.run_ended(9000, exit=1)
+        self.run_ended(8500, exit=1)
+        self.run_ended(8000, exit=0)
+        self.run_ended(7000, exit=1)
+        self.run_ended(6000, exit=1)
+        self.assertEqual(runner.failures_in_a_row(self.root, t), 2)
+        self.assertTrue(runner.decide(t, self.live_ctx(), QUIET, self.root).run)
 
 
 class Executing(TaskCase):

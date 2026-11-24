@@ -29,6 +29,7 @@ EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a fai
 WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
 KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
 RETRY_AFTER_FAILURE = timedelta(hours=1)  # rest after a failure or timeout, if shorter than the cooldown
+GIVE_UP_AFTER = 3  # failures in a row before a task stops retrying and waits for you
 BEAT_INTERVAL = 60  # seconds between updates of running.json while a task runs
 TELL_AFTER = timedelta(hours=1)  # checks failing this long get one desktop notification
 OFFLINE_RETRY = 20  # seconds to wait before trying once more: right after wake the network is often not up yet
@@ -77,6 +78,30 @@ def rest_after(previous: dict, cooldown: timedelta) -> timedelta | None:
     return min(cooldown, RETRY_AFTER_FAILURE)
 
 
+def failures_in_a_row(root: Path, task: Task) -> int:
+    """Failed, timed-out or cut-short runs since the last good one.
+
+    Only runs after the task file was last saved count: saving it is how you say "try again".
+    Runs stopped by the reserve brake, or that had nothing to do, say nothing about the task and are skipped.
+    """
+    try:
+        saved = task.path.stat().st_mtime
+    except OSError:
+        saved = 0
+    count = 0
+    for entry in reversed(state.runs(root)):
+        if entry["task"] != task.name:
+            continue
+        if entry["ended"] < saved:
+            break
+        if entry.get("exit") == EXIT_NOTHING_TO_DO or entry.get("stopped") == "reserve":
+            continue
+        if entry.get("exit") == 0 and not entry.get("stopped"):
+            break
+        count += 1
+    return count
+
+
 def decide(
     task: Task, ctx: Context, cfg: state.Config, root: Path, force: bool = False
 ) -> Decision:
@@ -94,6 +119,13 @@ def decide(
         return Decision(True, "ready", "", "because you asked")
     if not task.whens:
         return Decision(False, "off", f"only when you ask: waddlebag run {task.path.stem}")
+
+    failures = failures_in_a_row(root, task)
+    if failures >= GIVE_UP_AFTER:
+        return Decision(
+            False, "problem", f"needs you: it didn't work {failures} times in a row",
+            f"see why with `waddlebag logs {task.path.stem}`, then save the file to try again",
+        )
 
     previous = state.last_run(root, task.name)
     rest = rest_after(previous, task.cooldown) if previous else None
