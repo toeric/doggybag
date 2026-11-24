@@ -348,6 +348,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         "exit": code,
         "stopped": stopped,
         "log": str(log_path),
+        "week_before": ctx.usage.week.used,  # week_after is added once the quota is read again
     }
     state.record_run(root, entry)
     state.clear_running(root)
@@ -506,6 +507,7 @@ def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
             except UsageError as e:
                 ui.say("sad", ui.red("I couldn't re-read your quota, so I'm stopping here."), ui.dim(str(e)))
                 break
+            state.amend_last_run(root, entry["task"], week_after=usage.week.used)
             now = now_local()
             ctx = Context(usage, state.update_idle(root, usage, now), now)
 
