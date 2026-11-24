@@ -21,12 +21,19 @@ from .conditions import Clause, ConditionError, parse_duration, parse_when
 
 DEFAULT_COOLDOWN = timedelta(hours=5)
 DEFAULT_TIMEOUT = timedelta(hours=1)
-# Claude may only read and search by default; changing files has to be allowed with tools:
-DEFAULT_TOOLS = ["Read", "Grep", "Glob"]
+# How much Claude may do without asking, since nobody is there to click "allow".
+# `./**` keeps reading and editing inside the task's folder; one Edit rule covers every file-editing tool.
+ACCESS = {
+    "read": ["Read(./**)", "Grep(./**)", "Glob(./**)"],
+    "edit": ["Read(./**)", "Grep(./**)", "Glob(./**)", "Edit(./**)"],
+    "full": ["Read(./**)", "Grep(./**)", "Glob(./**)", "Edit(./**)", "Bash"],
+}
+DEFAULT_ACCESS = "read"
+DEFAULT_TOOLS = ACCESS[DEFAULT_ACCESS]
 CHANGING_TOOLS = {"Edit", "Write", "NotebookEdit", "Bash"}
 
 _ITEM_RE = re.compile(r"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.*?)\s*$", re.I)
-SETTINGS = ("when", "in", "run", "tools", "model", "cooldown", "timeout", "enabled")
+SETTINGS = ("when", "in", "access", "run", "tools", "model", "cooldown", "timeout", "enabled")
 
 
 @dataclass
@@ -36,6 +43,7 @@ class Task:
     whens: list[list[Clause]] = field(default_factory=list)
     workdir: Path | None = None
     run: str | None = None
+    access: str | None = None
     tools: list[str] | None = None
     model: str | None = None
     cooldown: timedelta = DEFAULT_COOLDOWN
@@ -48,12 +56,25 @@ class Task:
         return self.path.name
 
     @property
+    def allowed_tools(self) -> list[str]:
+        """What Claude may use: the `tools:` list if there is one, else what `access:` stands for."""
+        if self.tools is not None:
+            return self.tools
+        return ACCESS[self.access or DEFAULT_ACCESS]
+
+    @property
     def may_change_files(self) -> bool:
         """Whether a run cut short could leave its folder half-changed. A `run:` command could do anything."""
         if self.run:
             return True
-        tools = DEFAULT_TOOLS if self.tools is None else self.tools
-        return any(t.split("(")[0] in CHANGING_TOOLS for t in tools)
+        return any(t.split("(")[0] in CHANGING_TOOLS for t in self.allowed_tools)
+
+    @property
+    def warning(self) -> str | None:
+        """Something to say when the task is saved, though it is valid."""
+        if self.access == "full":
+            return f"access: full lets Claude run any command in {self.cwd} while nobody is watching."
+        return None
 
     @property
     def cwd(self) -> Path:
@@ -67,9 +88,8 @@ class Task:
         cmd = [claude or "claude", "-p"]
         if self.model:
             cmd += ["--model", self.model]
-        tools = DEFAULT_TOOLS if self.tools is None else self.tools
-        if tools:
-            cmd += ["--allowedTools", *tools]
+        if self.allowed_tools:
+            cmd += ["--allowedTools", *self.allowed_tools]
         return cmd
 
 
@@ -89,6 +109,10 @@ def _apply(task: Task, items: list[tuple[str, str]]) -> None:
             task.whens.append(parse_when(value))
         elif key == "in":
             task.workdir = Path(value).expanduser()
+        elif key == "access":
+            if value.lower() not in ACCESS:
+                raise ConditionError(f"`access` should be {', '.join(ACCESS)}, not '{value}'")
+            task.access = value.lower()
         elif key == "run":
             task.run = value
         elif key == "tools":
@@ -129,10 +153,12 @@ def load_task(path: Path) -> Task:
     try:
         items, task.body = split_card(path.read_text(encoding="utf-8", errors="replace"))
         _apply(task, items)
+        if task.access and task.tools is not None:
+            raise ConditionError("use `access` or `tools`, not both")
         if task.run:
-            if task.tools is not None or task.model is not None:
+            if task.access or task.tools is not None or task.model is not None:
                 raise ConditionError(
-                    "`tools` and `model` only apply when Claude runs the task; "
+                    "`access`, `tools` and `model` only apply when Claude runs the task; "
                     "remove them, or remove `run`"
                 )
         elif not task.body:

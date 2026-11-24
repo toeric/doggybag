@@ -2,7 +2,7 @@
 # Writes tests for the least-tested file. Allowed to change files.
 when: idle and behind
 in: ~/path/to/your/repo
-tools: Read, Grep, Glob, Edit, Write
+access: edit
 cooldown: 1d
 timeout: 45m
 enabled: false

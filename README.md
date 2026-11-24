@@ -86,7 +86,7 @@ Or [write your own numbers](docs/reference.md#conditions).
 
 ## Good to know
 
-- **Jobs can only read, by default.** Nobody is there to click "allow", so Claude may only use the tools a job lists. Add `tools: Read, Grep, Glob, Edit, Write` to let a job change files.
+- **Jobs can only read, by default.** Nobody is there to click "allow", so Claude may only read and search the job's folder. Add `access: edit` to let it change files there, or `access: full` to also let it run commands. [What each one allows](docs/reference.md#what-claude-is-allowed-to-do).
 - **Your own agent works too.** Add `run: python3 my_agent.py` and the text goes to that command instead of Claude Code.
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
 
