@@ -509,18 +509,27 @@ class Schedule(unittest.TestCase):
         self.assertIn("<false/>", text)
         self.assertIn("/opt/tools", data["EnvironmentVariables"]["PATH"])
 
-    def test_starts_the_waddlebag_script_when_installed(self):
-        # macOS names the background item after this program, so it should not be plain python
+    def test_starts_the_python_interpreter_even_when_the_script_exists(self):
+        # starting the script gets the scheduled run refused by macOS privacy protection (#30)
         from unittest import mock
 
         with tempfile.TemporaryDirectory() as d:
             python = Path(d) / "python"
+            script = Path(d) / "waddlebag"
+            script.write_text("#!/bin/sh\n")
+            script.chmod(0o755)
             with mock.patch.object(sys, "executable", str(python)):
                 self.assertEqual(launchd.program(), [str(python), "-m", "waddlebag", "run"])
-                script = Path(d) / "waddlebag"
-                script.write_text("#!/bin/sh\n")
-                script.chmod(0o755)
-                self.assertEqual(launchd.program(), [str(script), "run"])
+
+    def test_reads_the_last_exit_code(self):
+        from subprocess import CompletedProcess
+        from unittest import mock
+
+        printed = "gui/501/com.waddlebag.agent = {\n\truns = 15\n\tlast exit code = 1\n}\n"
+        with mock.patch.object(launchd, "_launchctl", return_value=CompletedProcess([], 0, printed, "")):
+            self.assertEqual(launchd.last_exit(), 1)
+        with mock.patch.object(launchd, "_launchctl", return_value=CompletedProcess([], 0, "runs = 0\n", "")):
+            self.assertIsNone(launchd.last_exit())
 
 
 class Housekeeping(unittest.TestCase):
