@@ -30,6 +30,7 @@ WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
 KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
 RETRY_AFTER_FAILURE = timedelta(hours=1)  # rest after a failure or timeout, if shorter than the cooldown
 BEAT_INTERVAL = 60  # seconds between updates of running.json while a task runs
+TELL_AFTER = timedelta(hours=1)  # checks failing this long get one desktop notification
 OFFLINE_RETRY = 20  # seconds to wait before trying once more: right after wake the network is often not up yet
 
 
@@ -354,6 +355,16 @@ def record_cut_short(root: Path, cfg: state.Config, ui: UI) -> dict | None:
     return entry
 
 
+def _keep_failing(root: Path, cfg: state.Config, why: str) -> None:
+    """Note a failed check. Being logged out never fixes itself, so after an hour say so, once."""
+    failing = state.note_failure(root, why, now_local())
+    if failing["notified"] or now_local().timestamp() - failing["since"] < TELL_AFTER.total_seconds():
+        return
+    if cfg.notify:
+        notify("waddlebag can't read your quota. Run `waddlebag status` to see why")
+    state.mark_failure_notified(root)
+
+
 def _read_quota(cfg: state.Config) -> Usage:
     try:
         return fetch_usage(cfg.claude)
@@ -391,9 +402,11 @@ def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
             return 0
         except UsageError as e:
             ui.say("sad", ui.red("I couldn't read your quota."), ui.dim(str(e)))
+            _keep_failing(root, cfg, str(e))
             return 1
         if state.set_offline(root, False):
             ui.line("Back online.")
+        state.clear_failure(root)
         now = now_local()
         ctx = Context(usage, state.update_idle(root, usage, now), now)
 

@@ -505,6 +505,26 @@ class Offline(TaskCase):
         code, lines = self.cycle(fetch)
         self.assertEqual(code, 1)
 
+    def test_checks_failing_for_an_hour_are_told_once(self):
+        from unittest import mock
+
+        def fetch(claude=None):
+            raise UsageError("not logged in")
+
+        told = []
+        cfg = state.Config(notify=True, mascot=False)
+        with mock.patch.object(runner, "notify", told.append), mock.patch.object(state, "load_config", lambda root: cfg):
+            self.cycle(fetch)
+            self.assertEqual(told, [])  # not yet: it may fix itself
+            self.assertEqual(state.failing(self.root)["why"], "not logged in")
+            later = runner.now_local() + timedelta(hours=1, minutes=1)
+            with mock.patch.object(runner, "now_local", lambda: later):
+                self.cycle(fetch)
+                self.cycle(fetch)
+            self.assertEqual(len(told), 1)
+            self.cycle(lambda claude=None: make_usage())
+        self.assertIsNone(state.failing(self.root))
+
     def test_a_failed_read_is_offline_only_when_the_network_is_down(self):
         from unittest import mock
         from waddlebag import usage
