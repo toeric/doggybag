@@ -84,7 +84,7 @@ Two things to know:
 |---|---|
 | `●` | ready: it would run right now |
 | `○` | waiting for its conditions, or resting after a run |
-| `–` | switched off, or it has no `when:` and only runs when you ask |
+| `–` | switched off |
 | `!` | it needs you: something is wrong with the file, or it didn't work 3 times in a row. The next line says what to do |
 
 ## Writing your own conditions
@@ -106,7 +106,7 @@ when: 5h.resets_in <= 30m and 5h.remaining >= 50
 
 - Conditions joined by `and` on one line must all hold.
 - With several `when:` lines, any one of them is enough.
-- A task with no `when:` never runs automatically. Run it by hand with `waddlebag run <task>`.
+- Every task needs a `when:` line; without one, `status` asks for it. `waddlebag run <task>` runs any task right away, whatever its `when:`.
 - Tasks are checked in filename order and run one at a time.
 - Only `.md` files directly inside `~/.waddlebag/tasks/` are tasks. Other files and subfolders are ignored.
 
@@ -137,7 +137,7 @@ A `#` after a space starts a comment, so `in: ~/work/api   # the backend` works.
 
 | Setting | Meaning | If you leave it out |
 |---|---|---|
-| `when` | When to run. Can appear more than once | The task only runs by hand |
+| `when` | When to run. Can appear more than once. Required | The task waits for you to add one |
 | `in` | The folder to work in | The tasks folder |
 | `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
 | `access` | How much Claude may do: `read`, `edit` or `full`. Not with `run` or `tools` | `read` |
