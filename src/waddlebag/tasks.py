@@ -23,6 +23,7 @@ DEFAULT_COOLDOWN = timedelta(hours=5)
 DEFAULT_TIMEOUT = timedelta(hours=1)
 # Claude may only read and search by default; changing files has to be allowed with tools:
 DEFAULT_TOOLS = ["Read", "Grep", "Glob"]
+CHANGING_TOOLS = {"Edit", "Write", "NotebookEdit", "Bash"}
 
 _ITEM_RE = re.compile(r"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.*?)\s*$", re.I)
 SETTINGS = ("when", "in", "run", "tools", "model", "cooldown", "timeout", "enabled")
@@ -45,6 +46,14 @@ class Task:
     @property
     def name(self) -> str:
         return self.path.name
+
+    @property
+    def may_change_files(self) -> bool:
+        """Whether a run cut short could leave its folder half-changed. A `run:` command could do anything."""
+        if self.run:
+            return True
+        tools = DEFAULT_TOOLS if self.tools is None else self.tools
+        return any(t.split("(")[0] in CHANGING_TOOLS for t in tools)
 
     @property
     def cwd(self) -> Path:

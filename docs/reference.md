@@ -127,7 +127,7 @@ Durations use `m`, `h` and `d`, alone or combined, largest first: `45m`, `6h`, `
 | `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
 | `tools` | What Claude may do without asking. `none` allows nothing. Not with `run` | `Read, Grep, Glob` |
 | `model` | Which Claude model to use. Not with `run` | Your Claude Code default |
-| `cooldown` | How long before the task can trigger again after it is done. After a failure or timeout it can try again after 1h (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
+| `cooldown` | How long before the task can trigger again after it is done. After a failure, a timeout or a run cut short it can try again after 1h (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
 | `timeout` | The task is stopped if it runs longer than this | `1h` |
 | `enabled` | Set to `false` to switch the task off | `true` |
 
@@ -151,6 +151,11 @@ Everything the command prints is written to `~/.waddlebag/logs/`. The newest 20 
 
 waddlebag cannot know how much quota a task will use, so it re-reads your quota every 5 minutes while a task runs.
 When the remaining quota falls below the reserve, it sends SIGTERM to the task (and force-stops it after 30 seconds), and starts no further tasks.
+
+## When a run is cut short
+
+If the Mac shuts down or waddlebag is stopped while a task runs, the next check records that run as "cut short" and the task tries again after 1h.
+A task that may change files (it has `Edit`, `Write` or `Bash` in `tools:`, or a `run:` command) also sends a notification: check `git status` in its folder, it may be half-changed.
 
 ## Settings file
 

@@ -33,7 +33,9 @@ def _outcome(previous: dict) -> str:
     started = previous.get("started", previous["ended"])
     took = format_duration(datetime.fromtimestamp(previous["ended"]) - datetime.fromtimestamp(started))
     code = previous.get("exit")
-    if previous.get("stopped") == "reserve":
+    if previous.get("stopped") == "interrupted":
+        what = "cut short (the Mac shut down, or I was stopped)"
+    elif previous.get("stopped") == "reserve":
         what = "dropped to save your quota"
     elif previous.get("stopped") == "timeout":
         what = "dropped at its time limit"

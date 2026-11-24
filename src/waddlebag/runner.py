@@ -29,6 +29,7 @@ EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a fai
 WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
 KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
 RETRY_AFTER_FAILURE = timedelta(hours=1)  # rest after a failure or timeout, if shorter than the cooldown
+BEAT_INTERVAL = 60  # seconds between updates of running.json while a task runs
 
 
 def now_local() -> datetime:
@@ -64,7 +65,7 @@ def reserve_shortfall(usage: Usage, cfg: state.Config) -> tuple[int, float] | No
 def rest_after(previous: dict, cooldown: timedelta) -> timedelta | None:
     """How long a task rests after this run.
 
-    Done: the full cooldown. Failed or timed out: retry sooner, the problem may be fixed by then.
+    Done: the full cooldown. Failed, timed out or cut short: retry sooner, the problem may be fixed by then.
     Nothing to do, or stopped by the reserve brake: no rest, it waits for its conditions and quota anyway.
     """
     if previous.get("exit") == EXIT_NOTHING_TO_DO or previous.get("stopped") == "reserve":
@@ -191,11 +192,28 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
             proc = None
 
         if proc is not None:
+            running = {
+                "task": name,
+                "reason": reason,
+                "started": started.timestamp(),
+                "beat": started.timestamp(),
+                "pid": proc.pid,
+                "log": str(log_path),
+                "folder": str(task.cwd),
+                "may_change_files": task.may_change_files,
+            }
+            state.mark_running(root, running)
             deadline = time.monotonic() + task.timeout.total_seconds()
             next_watch = time.monotonic() + WATCH_INTERVAL
+            next_beat = time.monotonic() + BEAT_INTERVAL
             try:
                 while proc.poll() is None:
                     time.sleep(2)
+                    if time.monotonic() >= next_beat:
+                        # the last sign of life tells a later check roughly when a cut-short run ended
+                        next_beat = time.monotonic() + BEAT_INTERVAL
+                        running["beat"] = time.time()
+                        state.mark_running(root, running)
                     if time.monotonic() >= deadline:
                         stopped = "timeout"
                     elif time.monotonic() >= next_watch:
@@ -225,6 +243,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         "log": str(log_path),
     }
     state.record_run(root, entry)
+    state.clear_running(root)
     state.prune_logs(logs, task.path.stem)
 
     took = format_duration(ended - started)
@@ -258,6 +277,47 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
     return entry
 
 
+def record_cut_short(root: Path, cfg: state.Config, ui: UI) -> dict | None:
+    """Record the run that a shutdown, a crash or a kill cut short. Call only while holding the run lock."""
+    left = state.left_running(root)
+    if left is None:
+        return None
+    entry = {
+        "task": left["task"],
+        "reason": left.get("reason", ""),
+        "started": left["started"],
+        "ended": left.get("beat", left["started"]),
+        "exit": None,
+        "stopped": "interrupted",
+        "log": left.get("log", ""),
+    }
+    log = Path(entry["log"])
+    if entry["log"] and log.exists():
+        try:
+            with open(log, "a", encoding="utf-8") as f:
+                f.write("\nwaddlebag: this run was cut short (the Mac shut down, or waddlebag was stopped)\n")
+        except OSError:
+            pass
+    state.record_run(root, entry)
+    state.clear_running(root)
+
+    title = Path(entry["task"]).stem
+    if left.get("may_change_files"):
+        folder = short(Path(left.get("folder", "")))
+        ui.say(
+            "alarm",
+            ui.yellow(f"{entry['task']} was cut short."),
+            f"It may have left {folder} half-changed: check `git status` there.",
+        )
+        note = f"{title} was cut short. Check `git status` in {folder}"
+    else:
+        ui.say("sad", ui.yellow(f"{entry['task']} was cut short."), ui.dim("I'll try it again in a while."))
+        note = None
+    if cfg.notify and note:
+        notify(note)
+    return entry
+
+
 def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
     """Check once. With `only`, run just that task and ignore its conditions. Returns the exit code."""
     cfg = state.load_config(root)
@@ -266,6 +326,8 @@ def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
         if not acquired:
             ui.say("sleep", "I'm already out on a job.", ui.dim("Skipping this round."))
             return 0
+        # holding the lock means no other run is alive, so a task still noted as running was cut short
+        record_cut_short(root, cfg, ui)
         try:
             usage = fetch_usage(cfg.claude)
         except UsageError as e:

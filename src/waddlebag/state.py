@@ -167,6 +167,31 @@ def prune_logs(logs: Path, stem: str, keep: int = KEEP_LOGS) -> None:
             pass
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def mark_running(root: Path, entry: dict) -> None:
+    """Note the task that is running now, so a run cut short by a shutdown still leaves a trace."""
+    root.mkdir(parents=True, exist_ok=True)
+    _write_atomic(root / "running.json", json.dumps(entry, ensure_ascii=False))
+
+
+def clear_running(root: Path) -> None:
+    try:
+        (root / "running.json").unlink()
+    except FileNotFoundError:
+        pass
+
+
+def left_running(root: Path) -> dict | None:
+    """The task noted by mark_running, if it was never cleared. Only meaningful while holding the run lock."""
+    entry = _read_json(root / "running.json")
+    return entry if {"task", "started"} <= entry.keys() else None
+
+
 def runs(root: Path) -> list[dict]:
     """Every recorded run, oldest first. Unreadable lines are skipped."""
     found = []

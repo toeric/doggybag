@@ -377,6 +377,39 @@ class Executing(TaskCase):
         self.assertEqual(entry["stopped"], "timeout")
         self.assertLess(entry["ended"] - entry["started"], 20)
 
+    def test_running_task_is_noted_and_cleared_when_it_ends(self):
+        t = self.write(f"---\nwhen: idle\nin: {self.work}\nrun: cat '{self.root}/running.json'\n---\n")
+        entry = self.execute(t)
+        self.assertIn('"task": "10-task.md"', Path(entry["log"]).read_text())
+        self.assertIsNone(state.left_running(self.root))
+
+    def test_a_run_cut_short_is_recorded_and_retried_later(self):
+        t = self.write(f"---\nwhen: idle\nin: {self.work}\ntools: Read, Edit\n---\nFix it\n")
+        log = self.root / "logs" / "10-task-20261124-100000.log"
+        log.parent.mkdir()
+        log.write_text("half of an answer\n")
+        started = runner.now_local().timestamp() - 600
+        state.mark_running(self.root, {
+            "task": t.name, "reason": "idle", "started": started, "beat": started + 300,
+            "pid": 999999, "log": str(log), "folder": str(self.work), "may_change_files": t.may_change_files,
+        })
+        lines = []
+        entry = runner.record_cut_short(self.root, QUIET, UI(write=lines.append, fancy=False))
+        self.assertEqual(entry["stopped"], "interrupted")
+        self.assertEqual(entry["ended"], started + 300)
+        self.assertIsNone(state.left_running(self.root))
+        self.assertEqual(state.last_run(self.root, t.name)["stopped"], "interrupted")
+        self.assertIn("cut short", log.read_text())
+        self.assertTrue(any("git status" in line for line in lines))
+        # retried after an hour, like a failure, not after the full cooldown
+        self.assertEqual(runner.rest_after(entry, timedelta(hours=5)), runner.RETRY_AFTER_FAILURE)
+        self.assertIsNone(runner.record_cut_short(self.root, QUIET, UI(write=lines.append, fancy=False)))
+
+    def test_only_tasks_that_can_change_files_say_so(self):
+        self.assertFalse(self.write("---\nwhen: idle\n---\nx\n").may_change_files)
+        self.assertTrue(self.write("---\nwhen: idle\ntools: Read, Bash(git:*)\n---\nx\n").may_change_files)
+        self.assertTrue(self.write("---\nwhen: idle\nrun: ./x.sh\n---\n").may_change_files)
+
     def test_only_one_run_at_a_time(self):
         with runner.single_instance(self.root) as first:
             self.assertTrue(first)
