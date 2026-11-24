@@ -72,7 +72,7 @@ Two things to know:
 | `●` | ready: it would run right now |
 | `○` | waiting for its conditions, or resting after a run |
 | `–` | switched off, or it has no `when:` and only runs when you ask |
-| `!` | something is wrong with the file, and the next line says what |
+| `!` | it needs you: something is wrong with the file, or it didn't work 3 times in a row. The next line says what to do |
 
 ## Writing your own conditions
 
@@ -127,7 +127,7 @@ Durations use `m`, `h` and `d`, alone or combined, largest first: `45m`, `6h`, `
 | `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
 | `tools` | What Claude may do without asking. `none` allows nothing. Not with `run` | `Read, Grep, Glob` |
 | `model` | Which Claude model to use. Not with `run` | Your Claude Code default |
-| `cooldown` | How long before the task can trigger again after it is done. After a failure, a timeout or a run cut short it can try again after 1h (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
+| `cooldown` | How long before the task can trigger again after it is done. After a failure, a timeout or a run cut short it can try again after 1h, up to 3 times in a row; then it waits until you save the file again (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
 | `timeout` | The task is stopped if it runs longer than this | `1h` |
 | `enabled` | Set to `false` to switch the task off | `true` |
 
