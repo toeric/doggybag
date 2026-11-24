@@ -133,6 +133,8 @@ Durations use `m`, `h` and `d`, alone or combined, largest first: `45m`, `6h`, `
 
 ## All settings
 
+A `#` after a space starts a comment, so `in: ~/work/api   # the backend` works. This is only so in the settings: in the text below them, `#` is a Markdown heading and goes to Claude as it is.
+
 | Setting | Meaning | If you leave it out |
 |---|---|---|
 | `when` | When to run. Can appear more than once | The task only runs by hand |

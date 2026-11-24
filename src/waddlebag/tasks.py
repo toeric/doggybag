@@ -32,6 +32,8 @@ DEFAULT_ACCESS = "read"
 DEFAULT_TOOLS = ACCESS[DEFAULT_ACCESS]
 CHANGING_TOOLS = {"Edit", "Write", "NotebookEdit", "Bash"}
 
+# a `#` after a space starts a comment, in the settings only: in the text below, `#` is a Markdown heading
+_COMMENT_RE = re.compile(r"\s+#.*$")
 _ITEM_RE = re.compile(r"^\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.*?)\s*$", re.I)
 SETTINGS = ("when", "in", "access", "run", "tools", "model", "cooldown", "timeout", "enabled")
 
@@ -141,7 +143,7 @@ def split_card(text: str) -> tuple[list[tuple[str, str]], str]:
             return items, "\n".join(lines[i + 1 :]).strip()
         if not line.strip() or line.lstrip().startswith("#"):
             continue
-        item = _ITEM_RE.match(line)
+        item = _ITEM_RE.match(_COMMENT_RE.sub("", line))
         if not item or not item["value"]:
             raise ConditionError(f"cannot read the line '{line.strip()}' (expected `key: value`)")
         items.append((item["key"], item["value"]))
