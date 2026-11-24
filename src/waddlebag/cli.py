@@ -15,7 +15,7 @@ from .conditions import Context, format_duration
 from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycle, running_now
 from .tasks import discover, ignored
 from .ui import UI, short
-from .usage import UsageError, Window, fetch_usage, find_claude
+from .usage import Offline, UsageError, Window, fetch_usage, find_claude
 
 # the four states: does the task need you? Only "!" does
 _MARKS = {"running": "▶", "waiting": "○", "needs you": "!", "off": "–"}
@@ -25,6 +25,8 @@ def _window_line(ui: UI, label: str, w: Window, now: datetime) -> str:
     head = f"{label:<5} {ui.bar(w.used)} {w.used:>3}% used"
     if w.resets_at is None:
         return head + ui.dim(" · no window open")
+    if w.resets_at <= now:  # old numbers, shown while new ones can't be read
+        return head + ui.dim(" · has reset since")
     return head + ui.dim(f" · resets in {format_duration(w.resets_in(now))}")
 
 
@@ -195,13 +197,21 @@ def cmd_status(args) -> int:
     root = state.home()
     ui = _ui(root)
     cfg = state.load_config(root)
+    now = now_local()
+    stale = None  # why the numbers below are old ones, when they are
     try:
         usage = fetch_usage(cfg.claude)
+        idle = state.update_idle(root, usage, now)
     except UsageError as e:
-        ui.say("sad", ui.red("I couldn't read your quota."), ui.dim(str(e)))
-        return 1
-    now = now_local()
-    idle = state.update_idle(root, usage, now)
+        last = state.last_usage(root)
+        if last is None:
+            ui.say("sad", ui.red("I couldn't read your quota."), ui.dim(str(e)))
+            _quick_list(ui, root)
+            return 1
+        usage, seen = last
+        idle = state.idle_for(root, now)
+        why = "no network" if isinstance(e, Offline) else str(e)
+        stale = f"I can't read your quota right now ({why}). These numbers are from {format_duration(now - seen)} ago"
     ctx = Context(usage, idle, now)
 
     failed = None  # exit code of the last scheduled run, when it failed
@@ -216,8 +226,8 @@ def cmd_status(args) -> int:
         if sys.platform == "darwin" and launchd.last_exit() not in (None, 0):
             failed = launchd.last_exit()
     ui.say(
-        "look",
-        "checking your quota...",
+        "look" if stale is None else "sad",
+        "checking your quota..." if stale is None else ui.yellow(stale),
         "",
         _window_line(ui, "5h", usage.five_hour, now),
         _window_line(ui, "week", usage.week, now),
@@ -357,6 +367,18 @@ def cmd_edit(args) -> int:
     if quick_state(task, root) == "running":
         ui.line(ui.dim(f"{name} is running right now. Your changes apply from its next run."))
     return 0
+
+
+def _quick_list(ui: UI, root: Path) -> None:
+    """The tasks and their states, without the quota: for when it can't be read at all."""
+    tasks = discover(root / "tasks")
+    if not tasks:
+        return
+    width = max(len(t.path.stem) for t in tasks)
+    ui.line()
+    for t in tasks:
+        kind = quick_state(t, root)
+        ui.line(f"{_MARKS[kind]} {t.path.stem:<{width}}    {kind}")
 
 
 def cmd_run(args) -> int:

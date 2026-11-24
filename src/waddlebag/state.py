@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .usage import Usage
+from .usage import FIVE_HOURS, ONE_WEEK, Usage, Window
 
 DEFAULT_CONFIG = """\
 # waddlebag settings
@@ -144,6 +144,8 @@ def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
         "five_used": usage.five_hour.used,
         "five_reset": five_reset,
         "week_used": usage.week.used,
+        # kept so status can show the last numbers when it can't read new ones
+        "week_reset": usage.week.resets_at.timestamp() if usage.week.resets_at else None,
     }
     root.mkdir(parents=True, exist_ok=True)
     _write_atomic(path, json.dumps(state))
@@ -193,6 +195,29 @@ def failing(root: Path) -> dict | None:
     """The failure that checks have been running into, if the last one failed."""
     found = _read_json(root / "state.json").get("failing")
     return found if isinstance(found, dict) and "since" in found else None
+
+
+def last_usage(root: Path) -> tuple[Usage, datetime] | None:
+    """The quota as the last good check saw it, and when that was. None before the first one."""
+    sample = _read_json(root / "state.json").get("sample")
+    if not isinstance(sample, dict) or "ts" not in sample:
+        return None
+
+    def when(ts):
+        return datetime.fromtimestamp(ts).astimezone() if ts else None
+
+    usage = Usage(
+        Window(sample.get("five_used", 0), when(sample.get("five_reset")), FIVE_HOURS),
+        Window(sample.get("week_used", 0), when(sample.get("week_reset")), ONE_WEEK),
+        "",
+    )
+    return usage, when(sample["ts"])
+
+
+def idle_for(root: Path, now: datetime) -> timedelta:
+    """How long nobody has used quota, from what was last seen, without taking a new sample."""
+    last = _read_json(root / "state.json").get("last_activity")
+    return timedelta(seconds=max(0.0, now.timestamp() - last)) if last else timedelta(0)
 
 
 KEEP_LOGS = 20  # run logs kept per task
