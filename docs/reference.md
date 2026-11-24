@@ -2,8 +2,6 @@
 
 The details, for when you need them. The [README](../README.md) has the short version.
 
-In the code and the commands, a job is called a *task*.
-
 ## What Claude is allowed to do
 
 Nobody is there to click "allow" when a task runs, so `access:` says up front how much Claude may do.
@@ -28,9 +26,9 @@ What each one allows, as Claude Code tools:
 
 **Your own list.** For anything else, list the tools yourself with `tools:` in place of `access:`, for example `tools: Read(./**), WebSearch`. `tools: none` allows nothing. A task cannot have both.
 
-## Handing the job to something else
+## Handing the task to something else
 
-By default the text of a job goes to Claude Code. Add `run:` and it goes to that command instead. Everything else about the job stays the same.
+By default the text of a task goes to Claude Code. Add `run:` and it goes to that command instead. Everything else about the task stays the same.
 
 **Your own agent.** The text below the settings is what your program receives as its input:
 
@@ -68,7 +66,7 @@ Two things to know:
 - `access:`, `tools:` and `model:` are settings for Claude Code, so they cannot be combined with `run:`.
 - Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
 
-## Managing jobs
+## Managing tasks
 
 | To… | Do this |
 |---|---|
@@ -77,7 +75,7 @@ Two things to know:
 | remove a task | delete its file in `~/.waddlebag/tasks/` |
 | switch a task off for now | `waddlebag edit <name>` and add `enabled: false` |
 | change the order | rename the files; waddlebag goes through them in filename order |
-| try a job right now | `waddlebag run 10-todo-triage` (ignores `when` and `enabled`) |
+| try a task right now | `waddlebag run todo-triage` (ignores `when` and `enabled`) |
 
 ## Reading `waddlebag status`
 

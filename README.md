@@ -6,7 +6,7 @@
 
 <p align="center">
   Your Claude subscription quota resets whether you used it or not.<br>
-  waddlebag spends what's left on jobs you choose, before it expires.
+  waddlebag spends what's left on tasks you hand it, before it expires.
 </p>
 
 <p align="center">
@@ -18,14 +18,14 @@
 
 ## How it works
 
-1. **You write a job.** A short text file: what Claude should do, in which folder, and when.
+1. **You hand over a task.** A short text: what Claude should do, in which folder, and when.
 2. **waddlebag keeps an eye on your quota.** Every 10 minutes it reads `/usage`, which costs nothing.
-3. **When the moment comes, it runs the job.** Say the 5-hour window resets in under an hour with 30% still unused: waddlebag hands your text to Claude Code and saves the answer.
+3. **When the moment comes, it runs the task.** Say the 5-hour window resets in under an hour with 30% still unused: waddlebag hands your text to Claude Code and saves the answer.
 
-It never goes below a reserve you set, and it stops a running job if your quota gets low.
+It never goes below a reserve you set, and it stops a running task if your quota gets low.
 
 <p align="center">
-  <img src="assets/status.svg" width="720" alt="waddlebag status in a terminal: quota bars and a list of jobs with what each one is waiting for">
+  <img src="assets/status.svg" width="720" alt="waddlebag status in a terminal: quota bars and a list of tasks with what each one is waiting for">
 </p>
 
 ## Install
@@ -65,11 +65,11 @@ Or [write your own numbers](docs/reference.md#conditions).
 | Command | What it does |
 |---|---|
 | `waddlebag setup` | Checks your environment and starts the 10-minute schedule |
-| `waddlebag status` | Shows your quota and what each job is waiting for |
+| `waddlebag status` | Shows your quota and what each task is waiting for |
 | `waddlebag pack <name>` | Hands over a new task: opens your editor on a template for the folder you are in |
 | `waddlebag edit [name]` | Changes a task in your editor. With no name, pick one from a list |
-| `waddlebag run` | Checks once, right now. `waddlebag run <job>` runs that job immediately |
-| `waddlebag logs` | Lists recent runs. `waddlebag logs <job>` shows that job's latest answer |
+| `waddlebag run` | Checks once, right now. `waddlebag run <task>` runs that task right away |
+| `waddlebag logs` | Lists recent runs. `waddlebag logs <task>` shows that task's latest answer |
 
 ## Examples
 
@@ -82,11 +82,11 @@ Start from one with `waddlebag pack <name> --from <example>`.
 | [write-tests](src/waddlebag/examples/write-tests.md?plain=1) | Writes tests for the least-tested file |
 | [run-skill](src/waddlebag/examples/run-skill.md?plain=1) | Runs one of your own Claude Code skills |
 | [review-commits](src/waddlebag/examples/review-commits.md?plain=1) | Pipes the latest commits to Claude for review |
-| [own-agent](src/waddlebag/examples/own-agent.md?plain=1) | Hands the job to a program of your own instead of Claude |
+| [own-agent](src/waddlebag/examples/own-agent.md?plain=1) | Hands the task to a program of your own instead of Claude |
 
 ## Good to know
 
-- **Jobs can only read, by default.** Nobody is there to click "allow", so Claude may only read and search the job's folder. Add `access: edit` to let it change files there, or `access: full` to also let it run commands. [What each one allows](docs/reference.md#what-claude-is-allowed-to-do).
+- **Tasks can only read, by default.** Nobody is there to click "allow", so Claude may only read and search the task's folder. Add `access: edit` to let it change files there, or `access: full` to also let it run commands. [What each one allows](docs/reference.md#what-claude-is-allowed-to-do).
 - **Your own agent works too.** Add `run: python3 my_agent.py` and the text goes to that command instead of Claude Code.
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
 
