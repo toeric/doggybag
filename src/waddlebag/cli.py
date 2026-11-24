@@ -12,12 +12,13 @@ from pathlib import Path
 
 from . import __version__, editing, launchd, state
 from .conditions import Context, format_duration
-from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycle
+from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycle, running_now
 from .tasks import discover, ignored
 from .ui import UI, short
 from .usage import UsageError, Window, fetch_usage, find_claude
 
-_MARKS = {"ready": "●", "waiting": "○", "resting": "○", "off": "–", "problem": "!"}
+# the four states: does the task need you? Only "!" does
+_MARKS = {"running": "▶", "waiting": "○", "needs you": "!", "off": "–"}
 
 
 def _window_line(ui: UI, label: str, w: Window, now: datetime) -> str:
@@ -238,13 +239,18 @@ def cmd_status(args) -> int:
         ui.line("No tasks yet. Go to a project folder and hand me one: waddlebag pack <name>")
         ui.line(ui.dim("(or start from an example: waddlebag pack <name> --from todo-triage)"))
     width = max((len(t.name) for t in tasks), default=0)
+    now_running = running_now(root)
     for task in tasks:
+        if now_running and now_running["task"] == task.name:
+            took = format_duration(now - datetime.fromtimestamp(now_running["started"]).astimezone())
+            ui.line(f"{ui.green(_MARKS['running'])} {task.name:<{width}}    {ui.green(f'running for {took}')}")
+            continue
         d = decide(task, ctx, cfg, root)
         mark, headline = _MARKS[d.kind], d.headline
-        if d.kind == "ready":
-            mark, headline = ui.green(mark), ui.green("ready") + headline[len("ready"):]
-        elif d.kind == "problem":
+        if d.kind == "needs you":
             mark, headline = ui.red(mark), ui.red(headline)
+        elif d.run:
+            mark, headline = ui.green(mark), ui.green(headline)
         else:
             mark = ui.dim(mark)
         ui.line(f"{mark} {task.name:<{width}}    {headline}")

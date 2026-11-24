@@ -81,12 +81,14 @@ Two things to know:
 
 ## Reading `waddlebag status`
 
-| Mark | Meaning |
-|---|---|
-| `●` | ready: it would run right now |
-| `○` | waiting for its conditions, or resting after a run |
-| `–` | switched off |
-| `!` | it needs you: something is wrong with the file, or it didn't work 3 times in a row. The next line says what to do |
+| Mark | State | Meaning |
+|---|---|---|
+| `▶` | running | running right now |
+| `○` | waiting | nothing for you to do. The line says why: it starts at the next check, it ran a while ago and rests, it waits for its `when:`, or I'm saving your last few percent |
+| `!` | needs you | something to fix, and the line says what: the file can't be read, its folder is gone, it has no `when:`, or it didn't work 3 times in a row |
+| `–` | off | you switched it off with `enabled: false` |
+
+Only `!` needs you. How the last run went is shown on the line below.
 
 ## Writing your own conditions
 
