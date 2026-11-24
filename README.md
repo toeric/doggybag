@@ -38,21 +38,17 @@ waddlebag setup
 You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
 If `pip` refuses to install into your system Python, use `pipx install` or `uv tool install` with the same address.
 
-## Write a job
+## Hand over a task
 
-A job is one Markdown file in `~/.waddlebag/tasks/`. `setup` leaves you a first one, switched off:
+Go to the folder Claude should work in, and pack a task:
 
-```markdown
----
-when: leftover
-in: ~/path/to/your/repo
-enabled: false
----
-Find the TODO and FIXME comments in this repository.
-Pick the five that are most worth fixing.
+```bash
+cd ~/work/myrepo
+waddlebag pack todo-triage
 ```
 
-Point `in:` at a folder, set `enabled: true`, and you are done. Answers land in `~/.waddlebag/logs/`.
+Your editor opens on a short template. Write what Claude should do, pick a `when:`, save and close.
+waddlebag checks it and keeps it in `~/.waddlebag/tasks/todo-triage.md`. Answers land in `~/.waddlebag/logs/`.
 
 | `when:` | Runs when |
 |---|---|
@@ -75,7 +71,7 @@ Or [write your own numbers](docs/reference.md#conditions).
 
 ## Examples
 
-`setup` copies these into `~/.waddlebag/tasks/examples/`. Copy one up into `~/.waddlebag/tasks/` to use it.
+Start from one with `waddlebag pack <name> --from <example>`.
 
 | Example | What it does |
 |---|---|

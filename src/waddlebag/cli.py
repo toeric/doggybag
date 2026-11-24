@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from datetime import datetime
-from importlib import resources
 from pathlib import Path
 
 from . import __version__, editing, launchd, state
@@ -15,9 +13,6 @@ from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycl
 from .tasks import discover, ignored
 from .ui import UI, short
 from .usage import UsageError, Window, fetch_usage, find_claude
-
-STARTER_EXAMPLE = "todo-triage.md"
-STARTER_NAME = "10-todo-triage.md"
 
 _MARKS = {"ready": "●", "waiting": "○", "resting": "○", "off": "–", "problem": "!"}
 
@@ -76,29 +71,11 @@ def cmd_setup(args) -> int:
         return 0
 
     tasks_dir = root / "tasks"
-    examples = tasks_dir / "examples"
-    examples.mkdir(parents=True, exist_ok=True)
+    tasks_dir.mkdir(parents=True, exist_ok=True)
     (root / "logs").mkdir(exist_ok=True)
     config = root / "config.toml"
     if not config.exists():
         config.write_text(state.DEFAULT_CONFIG, encoding="utf-8")
-
-    first_time = not discover(tasks_dir)
-    shipped = resources.files("waddlebag").joinpath("examples")
-    count = 0
-    for item in shipped.iterdir():
-        if not item.is_file():
-            continue
-        count += 1
-        target = examples / item.name
-        if not target.exists():
-            with resources.as_file(item) as src:
-                shutil.copyfile(src, target)  # examples/ is a subfolder, so these are never run from here
-    starter = tasks_dir / STARTER_NAME
-    if first_time:
-        # on a fresh install, hand the user a first job to edit; it starts switched off
-        with resources.as_file(shipped.joinpath(STARTER_EXAMPLE)) as src:
-            shutil.copyfile(src, starter)
 
     cfg = state.load_config(root)
     claude = find_claude(cfg.claude)
@@ -116,10 +93,7 @@ def cmd_setup(args) -> int:
         f"{ok} found Claude Code",
         f"{ok} I can read your quota",
         f"{ok} made your folder        {ui.dim(short(root))}",
-        f"{ok} left you {count} examples     {ui.dim(short(examples))}",
     ]
-    if first_time:
-        steps.append(f"{ok} wrote your first job    {ui.dim(short(starter) + ' (switched off)')}")
 
     if args.no_schedule:
         steps.append(ui.dim("· not checking on my own (--no-schedule). Call `waddlebag run` when you want me."))
@@ -140,12 +114,13 @@ def cmd_setup(args) -> int:
     for step in steps:
         ui.line(f"  {step}")
     ui.line()
-    if starter.exists():
-        ui.line(f"{ui.bold('All set!')} One thing left for you:")
-        ui.line(f"  open {short(starter)}")
-        ui.line("  set the folder after `in:` and change `enabled: false` to `true`")
-    else:
+    if discover(tasks_dir):
         ui.line(f"{ui.bold('All set!')} `waddlebag status` shows what I'm waiting for.")
+    else:
+        ui.line(f"{ui.bold('All set!')} Now hand me a task. Go to a project and pack one:")
+        ui.line("  cd <your project> && waddlebag pack <name>")
+        ui.line(ui.dim(f"  or start from an example: waddlebag pack <name> --from todo-triage"))
+        ui.line(ui.dim(f"  examples: {', '.join(sorted(editing.examples()))}"))
     return 0
 
 
@@ -195,8 +170,8 @@ def cmd_status(args) -> int:
 
     tasks = discover(root / "tasks")
     if not tasks:
-        ui.line(f"No jobs yet. Put a .md file in {short(root / 'tasks')}")
-        ui.line(ui.dim("(there are some to copy in the examples folder)"))
+        ui.line("No tasks yet. Go to a project folder and hand me one: waddlebag pack <name>")
+        ui.line(ui.dim("(or start from an example: waddlebag pack <name> --from todo-triage)"))
     width = max((len(t.name) for t in tasks), default=0)
     for task in tasks:
         d = decide(task, ctx, cfg, root)
