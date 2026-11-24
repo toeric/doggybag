@@ -114,6 +114,38 @@ def decide(
     return Decision(False, "waiting", "waiting", "; or ".join(waiting_for))
 
 
+class Stopped(BaseException):
+    """waddlebag itself was told to stop (SIGTERM from launchd or logout, SIGHUP from a closed terminal)."""
+
+    def __init__(self, signum: int):
+        super().__init__(signum)
+        self.signum = signum
+
+
+@contextmanager
+def stop_on_signals():
+    """Turn SIGTERM and SIGHUP into Stopped, so a running task is stopped instead of left behind.
+
+    Python's default for these signals ends the process at once, skipping all cleanup. The task runs in a
+    session of its own, so it would keep going, with no reserve brake. Only the first signal raises: a second
+    one while the task is being stopped must not cut that short.
+    """
+    raised = False
+
+    def handler(signum, frame):
+        nonlocal raised
+        if not raised:
+            raised = True
+            raise Stopped(signum)
+
+    previous = {sig: signal.signal(sig, handler) for sig in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield
+    finally:
+        for sig, old in previous.items():
+            signal.signal(sig, old)
+
+
 @contextmanager
 def single_instance(root: Path):
     """Allow only one `waddlebag run` at a time. Yields False when the lock is taken."""
@@ -227,8 +259,11 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
                     if stopped:
                         _stop(proc)
             except BaseException:
-                # if waddlebag itself is interrupted, do not leave the task running
+                # if waddlebag itself is interrupted, do not leave the task running.
+                # running.json stays, so the next check records this run as cut short; note when it ended.
                 _stop(proc)
+                running["beat"] = time.time()
+                state.mark_running(root, running)
                 raise
 
     ended = now_local()
@@ -322,6 +357,16 @@ def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
     """Check once. With `only`, run just that task and ignore its conditions. Returns the exit code."""
     cfg = state.load_config(root)
     ui = ui or UI(mascot_on=cfg.mascot)
+    try:
+        with stop_on_signals():
+            return _run_cycle(root, cfg, ui, only)
+    except Stopped as e:
+        ui.say("sleep", f"Told to stop ({signal.Signals(e.signum).name}), so I stopped too.")
+        # exit 0: being stopped is not a failed check, and `status` would otherwise warn about it
+        return 0
+
+
+def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
     with single_instance(root) as acquired:
         if not acquired:
             ui.say("sleep", "I'm already out on a job.", ui.dim("Skipping this round."))

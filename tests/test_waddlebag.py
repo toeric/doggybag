@@ -410,6 +410,37 @@ class Executing(TaskCase):
         self.assertTrue(self.write("---\nwhen: idle\ntools: Read, Bash(git:*)\n---\nx\n").may_change_files)
         self.assertTrue(self.write("---\nwhen: idle\nrun: ./x.sh\n---\n").may_change_files)
 
+    def test_stopping_waddlebag_stops_its_task(self):
+        import os, signal, subprocess, time
+        fake = self.root / "fake-claude"
+        fake.write_text("#!/bin/sh\necho 'Current session: 23% used · resets 11pm (UTC)'\n"
+                        "echo 'Current week (all models): 3% used · resets Nov 28 at 9pm (UTC)'\n")
+        fake.chmod(0o755)
+        pidfile = self.root / "task.pid"
+        self.write(f"---\nwhen: 5h.used >= 0\nin: {self.work}\nrun: echo $$ > '{pidfile}'; exec sleep 60\n---\n")
+        (self.root / "config.toml").write_text("notify = false\nmascot = false\n")
+        env = dict(os.environ, WADDLEBAG_HOME=str(self.root), WADDLEBAG_CLAUDE=str(fake),
+                   PYTHONPATH=str(Path(__file__).resolve().parent.parent / "src"))
+        proc = subprocess.Popen([sys.executable, "-m", "waddlebag", "run"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for _ in range(100):
+            if pidfile.exists() and pidfile.read_text().strip():
+                break
+            time.sleep(0.1)
+        task_pid = int(pidfile.read_text())
+        proc.send_signal(signal.SIGTERM)
+        out, _ = proc.communicate(timeout=20)
+        self.assertEqual(proc.returncode, 0, out)
+        self.assertIn("stopped too", out)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(task_pid, 0)
+        # the run is recorded as cut short at the next check
+        self.assertIsNotNone(state.left_running(self.root))
+
+    def test_launchd_waits_for_the_task_to_be_stopped(self):
+        data = launchd.build_plist(self.root, 10, None)
+        self.assertGreater(data["ExitTimeOut"], runner.KILL_GRACE)
+
     def test_only_one_run_at_a_time(self):
         with runner.single_instance(self.root) as first:
             self.assertTrue(first)
