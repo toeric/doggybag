@@ -101,6 +101,16 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Replace the file in one step, so a crash or power loss leaves the old version or the new, never half."""
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.replace(path)
+
+
 def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
     """Record this usage sample and return how long nobody has used quota.
 
@@ -136,7 +146,7 @@ def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
         "week_used": usage.week.used,
     }
     root.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state), encoding="utf-8")
+    _write_atomic(path, json.dumps(state))
     return timedelta(seconds=max(0.0, now.timestamp() - state["last_activity"]))
 
 
@@ -148,7 +158,7 @@ def set_offline(root: Path, offline: bool) -> bool:
         return False
     state["offline"] = offline
     root.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state), encoding="utf-8")
+    _write_atomic(path, json.dumps(state))
     return True
 
 
@@ -160,7 +170,7 @@ def note_failure(root: Path, why: str, now: datetime) -> dict:
     failing["why"] = why
     state["failing"] = failing
     root.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state), encoding="utf-8")
+    _write_atomic(path, json.dumps(state))
     return failing
 
 
@@ -169,14 +179,14 @@ def mark_failure_notified(root: Path) -> None:
     state = _read_json(path)
     if state.get("failing"):
         state["failing"]["notified"] = True
-        path.write_text(json.dumps(state), encoding="utf-8")
+        _write_atomic(path, json.dumps(state))
 
 
 def clear_failure(root: Path) -> None:
     path = root / "state.json"
     state = _read_json(path)
     if state.pop("failing", None) is not None:
-        path.write_text(json.dumps(state), encoding="utf-8")
+        _write_atomic(path, json.dumps(state))
 
 
 def failing(root: Path) -> dict | None:
@@ -196,9 +206,7 @@ def record_run(root: Path, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
     if len(lines) > 2 * KEEP_RUNS:
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text("".join(lines[-KEEP_RUNS:]), encoding="utf-8")
-        tmp.replace(path)
+        _write_atomic(path, "".join(lines[-KEEP_RUNS:]))
 
 
 def prune_logs(logs: Path, stem: str, keep: int = KEEP_LOGS) -> None:
@@ -210,12 +218,6 @@ def prune_logs(logs: Path, stem: str, keep: int = KEEP_LOGS) -> None:
             old.unlink()
         except OSError:
             pass
-
-
-def _write_atomic(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
 
 
 def mark_running(root: Path, entry: dict) -> None:
