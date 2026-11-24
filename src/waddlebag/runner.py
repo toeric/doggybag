@@ -102,6 +102,18 @@ def failures_in_a_row(root: Path, task: Task) -> int:
     return count
 
 
+def quick_state(task: Task, root: Path) -> str:
+    """running, needs you, off or waiting, without reading the quota: for lists that must not wait on it."""
+    left = state.left_running(root)
+    if left and left["task"] == task.name:
+        return "running"
+    if task.error or not task.whens or not task.cwd.is_dir() or failures_in_a_row(root, task) >= GIVE_UP_AFTER:
+        return "needs you"
+    if not task.enabled:
+        return "off"
+    return "waiting"
+
+
 def decide(
     task: Task, ctx: Context, cfg: state.Config, root: Path, force: bool = False
 ) -> Decision:

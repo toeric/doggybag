@@ -721,6 +721,59 @@ class Packing(TaskCase):
         self.assertFalse(any(p.name.startswith(".") for p in (self.root / "tasks").iterdir()))
 
 
+class EditingTasks(TaskCase):
+    def edit(self, argv, editor_text=None, answers=()):
+        import os
+        from unittest import mock
+        script = self.root / "editor.sh"
+        if editor_text is None:
+            script.write_text("#!/bin/sh\ntrue\n")  # closes without saving
+        else:
+            new = self.root / "new.md"
+            new.write_text(editor_text)
+            script.write_text(f"#!/bin/sh\ncp '{new}' \"$1\"\n")
+        script.chmod(0o755)
+        asked, out = list(answers), []
+        with mock.patch.dict(os.environ, {"WADDLEBAG_HOME": str(self.root), "VISUAL": str(script)}), \
+                mock.patch.object(cli, "_ask", lambda q: asked.pop(0) if asked else "d"), \
+                mock.patch("builtins.print", lambda *a, **k: out.append(" ".join(map(str, a)))):
+            code = cli.main(argv)
+        return code, "\n".join(out)
+
+    def test_edit_saves_a_good_change(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle\n---\nOld text\n", name="todo.md")
+        code, out = self.edit(["edit", "todo"], f"# help\n---\nin: {self.work}\nwhen: leftover\n---\nNew text\n")
+        self.assertEqual(code, 0)
+        self.assertIn("Saved todo", out)
+        self.assertEqual(load_task(self.root / "tasks" / "todo.md").body, "New text")
+
+    def test_closing_without_saving_changes_nothing(self):
+        text = f"---\nin: {self.work}\nwhen: idle\n---\nOld text\n"
+        self.write(text, name="todo.md")
+        code, out = self.edit(["edit", "todo"])
+        self.assertEqual((code, (self.root / "tasks" / "todo.md").read_text()), (0, text))
+        self.assertIn("as it was", out)
+
+    def test_a_bad_change_is_never_saved(self):
+        text = f"---\nin: {self.work}\nwhen: idle\n---\nOld text\n"
+        self.write(text, name="todo.md")
+        code, out = self.edit(["edit", "todo"], "---\nwhen: nonsense\n---\nx\n", answers=("d",))
+        self.assertEqual((self.root / "tasks" / "todo.md").read_text(), text)
+        self.assertIn("nonsense", out)
+
+    def test_pick_from_a_list(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle\n---\nA\n", name="alpha.md")
+        self.write(f"---\nin: {self.work}\nwhen: idle\nenabled: false\n---\nB\n", name="beta.md")
+        code, out = self.edit(["edit"], f"---\nin: {self.work}\nwhen: behind\n---\nB2\n", answers=("2",))
+        self.assertIn("1) alpha", out)
+        self.assertIn("off", out)
+        self.assertEqual(load_task(self.root / "tasks" / "beta.md").body, "B2")
+
+    def test_unknown_task(self):
+        self.write(f"---\nwhen: idle\n---\nA\n", name="alpha.md")
+        self.assertEqual(self.edit(["edit", "nope"])[0], 1)
+
+
 class Examples(unittest.TestCase):
     def test_every_example_card_is_valid(self):
         examples = resources.files("waddlebag").joinpath("examples")

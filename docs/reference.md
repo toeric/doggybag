@@ -73,8 +73,9 @@ Two things to know:
 | To… | Do this |
 |---|---|
 | add a task | `cd` to its folder, then `waddlebag pack <name>`. Your editor opens on a template; saving checks it and adds it. `--from <example>` starts from a built-in example |
-| remove a job | delete the file |
-| switch a job off for now | set `enabled: false` |
+| change a task | `waddlebag edit <name>`, or `waddlebag edit` to pick from a list. Saving checks it the same way as `pack`; closing without saving changes nothing |
+| remove a task | delete its file in `~/.waddlebag/tasks/` |
+| switch a task off for now | `waddlebag edit <name>` and add `enabled: false` |
 | change the order | rename the files; waddlebag goes through them in filename order |
 | try a job right now | `waddlebag run 10-todo-triage` (ignores `when` and `enabled`) |
 

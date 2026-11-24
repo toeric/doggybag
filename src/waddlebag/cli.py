@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__, editing, launchd, state
 from .conditions import Context, format_duration
-from .runner import EXIT_NOTHING_TO_DO, decide, now_local, run_cycle
+from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycle
 from .tasks import discover, ignored
 from .ui import UI, short
 from .usage import UsageError, Window, fetch_usage, find_claude
@@ -250,6 +250,57 @@ def cmd_pack(args) -> int:
     return 0
 
 
+def _pick(ui: UI, tasks: list) -> object | None:
+    width = max(len(t.path.stem) for t in tasks)
+    ui.line("Which task?")
+    for i, t in enumerate(tasks, start=1):
+        ui.line(f"  {i}) {t.path.stem:<{width}}    {ui.dim(quick_state(t, state.home()))}")
+    answer = _ask("> ").strip()
+    if answer.isdigit() and 1 <= int(answer) <= len(tasks):
+        return tasks[int(answer) - 1]
+    return next((t for t in tasks if answer in (t.name, t.path.stem)), None)
+
+
+def cmd_edit(args) -> int:
+    root = state.home()
+    ui = _ui(root)
+    tasks = discover(root / "tasks")
+    if not tasks:
+        ui.line("No tasks yet. Go to a project folder and hand me one: waddlebag pack <name>")
+        return 1
+    if args.name:
+        task = next((t for t in tasks if args.name in (t.name, t.path.stem)), None)
+        if task is None:
+            ui.say("sad", ui.red(f"I don't know a task called '{args.name}'."),
+                   f"I have: {', '.join(t.path.stem for t in tasks)}")
+            return 1
+    else:
+        task = _pick(ui, tasks)
+        if task is None:
+            ui.line("Nothing changed.")
+            return 0
+    name = task.path.stem
+    try:
+        result = editing.edit_loop(
+            editing.edit_template(task.path), name, ask=_ask, say=lambda s: ui.line(ui.red(s)),
+            unchanged_cancels=True,
+        )
+    except editing.EditError as e:
+        ui.say("sad", ui.red(str(e)))
+        return 1
+    if result is None:
+        ui.line(f"Nothing changed: {name} is as it was.")
+        return 0
+    cleaned, saved = result
+    editing.write_task(task.path, cleaned)
+    ui.say("happy", f"Saved {name}.", ui.dim(short(task.path)))
+    if saved.warning:
+        ui.line(ui.yellow(f"! {saved.warning}"))
+    if quick_state(task, root) == "running":
+        ui.line(ui.dim(f"{name} is running right now. Your changes apply from its next run."))
+    return 0
+
+
 def cmd_run(args) -> int:
     return run_cycle(state.home(), only=args.task)
 
@@ -307,6 +358,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--from", dest="example", metavar="EXAMPLE",
                    help="start from a built-in example: " + ", ".join(sorted(editing.examples())))
     p.set_defaults(func=cmd_pack)
+
+    p = sub.add_parser("edit", help="change a task in your editor; with no name, pick one from a list")
+    p.add_argument("name", nargs="?", help="the task to change")
+    p.set_defaults(func=cmd_edit)
 
     p = sub.add_parser("run", help="check once and run the jobs whose conditions hold")
     p.add_argument("task", nargs="?", help="run this one job now, ignoring its conditions")
