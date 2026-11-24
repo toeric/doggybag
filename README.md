@@ -31,12 +31,14 @@ It never goes below a reserve you set, and it stops a running job if your quota 
 ## Install
 
 ```bash
-pip install git+https://github.com/toeric/waddlebag
-waddlebag setup
+curl -fsSL https://raw.githubusercontent.com/toeric/waddlebag/main/install.sh | sh
 ```
 
-You need macOS, Python 3.11+, and [Claude Code](https://claude.com/claude-code) logged in.
-If `pip` refuses to install into your system Python, use `pipx install` or `uv tool install` with the same address.
+You need macOS and [Claude Code](https://claude.com/claude-code) logged in.
+The [script](install.sh) puts waddlebag in a folder of its own (`~/.waddlebag/venv`), links the command into `~/.local/bin`, asks before adding that to your PATH, and runs `waddlebag setup`.
+It uses [uv](https://docs.astral.sh/uv/) if you have it, or a Python 3.11+ it finds. Run it again to update.
+
+Already use `pipx` or `uv`? `pipx install git+https://github.com/toeric/waddlebag` (or `uv tool install` with the same address), then `waddlebag setup`.
 
 ## Hand over a task
 
