@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from waddlebag import launchd, mascot, runner, state  # noqa: E402
+from waddlebag import cli, editing, launchd, mascot, runner, state  # noqa: E402
 from waddlebag.conditions import ConditionError, Context, evaluate, parse_when  # noqa: E402
 from waddlebag.tasks import discover, ignored, load_task  # noqa: E402
 from waddlebag.ui import UI  # noqa: E402
@@ -616,6 +616,109 @@ class Offline(TaskCase):
             with self.assertRaises(UsageError) as e:
                 usage.fetch_usage(str(fake))
             self.assertNotIsInstance(e.exception, usage.Offline)
+
+
+class Packing(TaskCase):
+    def template(self, example=None):
+        return editing.new_template("todo", self.work, example)
+
+    def fill(self, text, settings=None, body="Find the TODOs."):
+        if settings:
+            text = text.replace("when: leftover", settings)
+        return text.replace(editing.PLACEHOLDER, body)
+
+    def loop(self, *contents, answers=("e",)):
+        """Run the edit loop with an editor that writes each of `contents` in turn."""
+        said, asked, seen = [], list(answers), []
+
+        def editor(path):
+            seen.append(path.read_text())
+            path.write_text(contents[len(seen) - 1])
+
+        result = editing.edit_loop(self.template(), "todo", ask=lambda q: asked.pop(0), say=said.append, editor=editor)
+        return result, said, seen
+
+    def test_template_points_at_the_current_folder_and_reads_only(self):
+        task, problem = editing.check(editing.clean(self.fill(self.template())), "todo")
+        self.assertIsNone(problem)
+        self.assertEqual((task.cwd, task.access, task.enabled), (self.work, "read", True))
+        self.assertEqual(task.body, "Find the TODOs.")
+
+    def test_saving_drops_the_help_but_not_the_text_for_claude(self):
+        cleaned = editing.clean(self.fill(self.template(), body="# Heading\nDo it."))
+        self.assertTrue(cleaned.startswith("---\nin: "))
+        self.assertNotIn("# model:", cleaned)
+        self.assertIn("# where Claude works", cleaned)  # a comment after a setting stays
+        self.assertTrue(cleaned.endswith("---\n# Heading\nDo it.\n"))
+
+    def test_untouched_template_asks_for_the_text(self):
+        self.assertIn("what Claude should do", editing.check(editing.clean(self.template()), "todo")[1])
+
+    def test_a_good_task_is_returned(self):
+        result, said, _ = self.loop(self.fill(self.template()))
+        self.assertEqual(said, [])
+        self.assertEqual(result[1].body, "Find the TODOs.")
+
+    def test_empty_file_cancels(self):
+        self.assertIsNone(self.loop("")[0])
+
+    def test_a_problem_can_be_edited_again_with_the_problem_shown(self):
+        bad = self.fill(self.template(), settings="when: leftovr")
+        result, said, seen = self.loop(bad, self.fill(self.template()))
+        self.assertIn("leftovr", said[0])
+        self.assertTrue(seen[1].startswith("# ! "))
+        self.assertIsNotNone(result)
+
+    def test_a_problem_can_be_discarded(self):
+        result, said, _ = self.loop(self.fill(self.template(), settings="when: leftovr"), answers=("d",))
+        self.assertIsNone(result)
+
+    def test_missing_folder_and_missing_when_are_problems(self):
+        text = self.fill(self.template()).replace(str(self.work), "/no/such/folder")
+        self.assertIn("can't find the folder", editing.check(editing.clean(text), "todo")[1])
+        text = self.fill(self.template()).replace("when: leftover", "")
+        self.assertIn("`when:`", editing.check(editing.clean(text), "todo")[1])
+
+    def test_names(self):
+        self.assertEqual(editing.check_name("todo-triage", self.root / "tasks"), self.root / "tasks" / "todo-triage.md")
+        with self.assertRaises(editing.EditError):
+            editing.check_name("../evil", self.root / "tasks")
+        self.write("x", name="taken.md")
+        with self.assertRaises(editing.EditError) as e:
+            editing.check_name("taken", self.root / "tasks")
+        self.assertIn("waddlebag edit taken", str(e.exception))
+
+    def test_every_example_makes_a_good_task_without_its_placeholder_folder(self):
+        for name in editing.examples():
+            task, problem = editing.check(editing.clean(self.template(name)), "todo")
+            self.assertIsNone(problem, name)
+            self.assertEqual(task.cwd, self.work, name)
+            self.assertTrue(task.enabled, name)
+        with self.assertRaises(editing.EditError):
+            self.template("no-such-example")
+
+    def test_full_access_warns(self):
+        task, _ = editing.check(editing.clean(self.fill(self.template()).replace("access: read", "access: full")), "todo")
+        self.assertIn("any command", task.warning)
+
+    def test_pack_command_uses_your_editor_and_writes_the_task(self):
+        import os
+        from unittest import mock
+        script = self.root / "editor.sh"
+        filled = self.root / "filled.md"
+        filled.write_text(self.fill(self.template()))
+        script.write_text(f"#!/bin/sh\ncp '{filled}' \"$1\"\n")
+        script.chmod(0o755)
+        env = {"WADDLEBAG_HOME": str(self.root), "VISUAL": str(script)}
+        out = []
+        with mock.patch.dict(os.environ, env), mock.patch.object(Path, "cwd", lambda: self.work), \
+                mock.patch("builtins.print", lambda *a, **k: out.append(" ".join(map(str, a)))):
+            self.assertEqual(cli.main(["pack", "todo"]), 0)
+            self.assertEqual(cli.main(["pack", "todo"]), 1)  # the name is taken now
+        saved = load_task(self.root / "tasks" / "todo.md")
+        self.assertIsNone(saved.error)
+        self.assertEqual(saved.cwd, self.work)
+        self.assertFalse(any(p.name.startswith(".") for p in (self.root / "tasks").iterdir()))
 
 
 class Examples(unittest.TestCase):

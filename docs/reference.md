@@ -72,7 +72,7 @@ Two things to know:
 
 | To… | Do this |
 |---|---|
-| add a job | put a file in `~/.waddlebag/tasks/` |
+| add a task | `cd` to its folder, then `waddlebag pack <name>`. Your editor opens on a template; saving checks it and adds it. `--from <example>` starts from a built-in example |
 | remove a job | delete the file |
 | switch a job off for now | set `enabled: false` |
 | change the order | rename the files; waddlebag goes through them in filename order |
