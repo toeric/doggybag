@@ -181,11 +181,15 @@ def cmd_status(args) -> int:
         _window_line(ui, "week", usage.week, now),
         ui.dim(f"quiet for {format_duration(idle)} · {checking}"),
     )
-    if failed is not None:
+    trouble = state.failing(root)
+    if trouble:
+        since = datetime.fromtimestamp(trouble["since"])
+        ui.line(ui.yellow(f"! my checks have been failing since {since:%b %d %H:%M}: {trouble.get('why', '?')}"))
+    elif failed is not None:
         log = short(root / "logs" / "waddlebag.log")
         ui.line(ui.yellow(f"! my last scheduled check failed (exit {failed}). What it said is in {log}"))
-        if ui.mascot_on:
-            ui.line()  # plain mode adds its own blank line just below
+    if (trouble or failed is not None) and ui.mascot_on:
+        ui.line()  # plain mode adds its own blank line just below
     if not ui.mascot_on:
         ui.line()  # the penguin block ends with a blank line of its own
 

@@ -152,6 +152,39 @@ def set_offline(root: Path, offline: bool) -> bool:
     return True
 
 
+def note_failure(root: Path, why: str, now: datetime) -> dict:
+    """Remember that a check failed. Returns the failure so far: since, why, notified."""
+    path = root / "state.json"
+    state = _read_json(path)
+    failing = state.get("failing") or {"since": now.timestamp(), "notified": False}
+    failing["why"] = why
+    state["failing"] = failing
+    root.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return failing
+
+
+def mark_failure_notified(root: Path) -> None:
+    path = root / "state.json"
+    state = _read_json(path)
+    if state.get("failing"):
+        state["failing"]["notified"] = True
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def clear_failure(root: Path) -> None:
+    path = root / "state.json"
+    state = _read_json(path)
+    if state.pop("failing", None) is not None:
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def failing(root: Path) -> dict | None:
+    """The failure that checks have been running into, if the last one failed."""
+    found = _read_json(root / "state.json").get("failing")
+    return found if isinstance(found, dict) and "since" in found else None
+
+
 KEEP_LOGS = 20  # run logs kept per task
 KEEP_RUNS = 500  # lines kept in runs.jsonl once it passes twice that
 
