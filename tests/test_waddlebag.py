@@ -318,14 +318,14 @@ class Deciding(TaskCase):
 
     def test_no_condition_needs_you_but_runs_by_hand(self):
         d = self.decide("Hi\n")
-        self.assertEqual((d.run, d.kind), (False, "problem"))
+        self.assertEqual((d.run, d.kind), (False, "needs you"))
         self.assertIn("add a `when:` line", d.headline)
         self.assertTrue(self.decide("Hi\n", force=True).run)
 
     def test_error_is_reported(self):
         d = self.decide("---\nwhen: nonsense >= 1\n---\nHi\n", force=True)
         self.assertFalse(d.run)
-        self.assertEqual(d.kind, "problem")
+        self.assertEqual(d.kind, "needs you")
         self.assertIn("unknown signal", d.detail)
 
     def test_reserve_blocks(self):
@@ -337,27 +337,27 @@ class Deciding(TaskCase):
         text = "---\nwhen: idle\nenabled: false\n---\nHi\n"
         d = self.decide(text)
         self.assertFalse(d.run)
-        self.assertEqual((d.kind, d.headline), ("off", "switched off"))
+        self.assertEqual((d.kind, d.headline), ("off", "off"))
         self.assertTrue(self.decide(text, force=True).run)
 
     def test_missing_folder_is_reported_for_any_task_even_by_hand(self):
         for text in ("---\nwhen: idle\nin: /no/such\n---\nHi\n", "---\nwhen: idle\nin: /no/such\nrun: ./a.sh\n---\n"):
             d = self.decide(text, force=True)
             self.assertFalse(d.run)
-            self.assertIn("I can't find the folder /no/such", d.headline)
+            self.assertIn("the `in:` folder /no/such doesn't exist", d.headline)
 
     def test_switched_off_job_with_missing_folder_is_just_off(self):
         # the starter job after setup: switched off, folder still the placeholder
         text = "---\nwhen: leftover\nin: /no/such\nenabled: false\n---\nHi\n"
         d = self.decide(text)
-        self.assertEqual((d.kind, d.headline), ("off", "switched off"))
-        self.assertIn("I can't find the folder", self.decide(text, force=True).headline)
+        self.assertEqual((d.kind, d.headline), ("off", "off"))
+        self.assertIn("doesn't exist", self.decide(text, force=True).headline)
 
     def test_cooldown_blocks_but_exit_75_does_not(self):
         text = "---\nwhen: idle\ncooldown: 6h\n---\nHi\n"
         ended = (NOW - timedelta(hours=1)).timestamp()
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 0, "stopped": None})
-        self.assertIn("resting, back in 5h", self.decide(text).headline)
+        self.assertIn("again in 5h", self.decide(text).headline)
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": 75, "stopped": None})
         self.assertTrue(self.decide(text).run)
 
@@ -366,7 +366,7 @@ class Deciding(TaskCase):
         ended = (NOW - timedelta(minutes=30)).timestamp()
         for exit_code, stopped in ((1, None), (-15, "timeout")):
             state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": exit_code, "stopped": stopped})
-            self.assertIn("resting, back in 30m", self.decide(text).headline)
+            self.assertIn("again in 30m", self.decide(text).headline)
         state.record_run(self.root, {"task": "10-task.md", "ended": ended, "exit": -15, "stopped": "reserve"})
         self.assertTrue(self.decide(text).run)
         long_ago = (NOW - timedelta(hours=2)).timestamp()
@@ -389,7 +389,7 @@ class GivingUp(TaskCase):
         self.run_ended(7500, exit=75)  # had nothing to do: doesn't count, doesn't reset
         self.run_ended(7000, exit=None, stopped="interrupted")
         d = runner.decide(t, self.live_ctx(), QUIET, self.root)
-        self.assertEqual((d.run, d.kind), (False, "problem"))
+        self.assertEqual((d.run, d.kind), (False, "needs you"))
         self.assertIn("3 times in a row", d.headline)
         # running it by hand is still possible
         self.assertTrue(runner.decide(t, self.live_ctx(), QUIET, self.root, force=True).run)
@@ -518,6 +518,14 @@ class Executing(TaskCase):
     def test_launchd_waits_for_the_task_to_be_stopped(self):
         data = launchd.build_plist(self.root, 10, None)
         self.assertGreater(data["ExitTimeOut"], runner.KILL_GRACE)
+
+    def test_running_only_while_a_run_holds_the_lock(self):
+        state.mark_running(self.root, {"task": "10-task.md", "started": 0})
+        self.assertIsNone(runner.running_now(self.root))  # a leftover from a run that was cut short
+        with runner.single_instance(self.root):
+            self.assertEqual(runner.running_now(self.root)["task"], "10-task.md")
+            t = self.write("---\nwhen: idle\n---\nx\n")
+            self.assertEqual(runner.quick_state(t, self.root), "running")
 
     def test_only_one_run_at_a_time(self):
         with runner.single_instance(self.root) as first:

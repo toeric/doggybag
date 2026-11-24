@@ -43,7 +43,8 @@ def now_local() -> datetime:
 class Decision:
     """Whether a task runs now, and how to say so.
 
-    kind is one of: ready, waiting, resting, off, problem.
+    kind is what `status` shows: waiting, needs you or off. (running comes from running_now, not from here.)
+    run says whether the task goes now; a task that goes is still "waiting" for the check that starts it.
     """
 
     run: bool
@@ -102,10 +103,23 @@ def failures_in_a_row(root: Path, task: Task) -> int:
     return count
 
 
+def running_now(root: Path) -> dict | None:
+    """The task a `waddlebag run` is running right now, if any.
+
+    running.json alone could be left over from a run that was cut short, so it only counts while the run lock
+    is held. Don't call this while holding the lock yourself.
+    """
+    left = state.left_running(root)
+    if left is None:
+        return None
+    with single_instance(root) as acquired:
+        return None if acquired else left
+
+
 def quick_state(task: Task, root: Path) -> str:
     """running, needs you, off or waiting, without reading the quota: for lists that must not wait on it."""
-    left = state.left_running(root)
-    if left and left["task"] == task.name:
+    now = running_now(root)
+    if now and now["task"] == task.name:
         return "running"
     if task.error or not task.whens or not task.cwd.is_dir() or failures_in_a_row(root, task) >= GIVE_UP_AFTER:
         return "needs you"
@@ -118,27 +132,27 @@ def decide(
     task: Task, ctx: Context, cfg: state.Config, root: Path, force: bool = False
 ) -> Decision:
     if task.error:
-        return Decision(False, "problem", "I can't read this one", task.error)
+        return Decision(False, "needs you", "needs you: I can't read this file", task.error)
     # a switched-off job is not checked further: the starter job is off and still has a placeholder folder
     if not task.enabled and not force:
-        return Decision(False, "off", "switched off")
+        return Decision(False, "off", "off")
     if not task.cwd.is_dir():
         return Decision(
-            False, "problem", f"I can't find the folder {short(task.cwd)}",
+            False, "needs you", f"needs you: the `in:` folder {short(task.cwd)} doesn't exist",
             "set `in:` to a folder that exists",
         )
     if force:
-        return Decision(True, "ready", "", "because you asked")
+        return Decision(True, "waiting", "", "because you asked")
     if not task.whens:
         return Decision(
-            False, "problem", "needs you: add a `when:` line",
+            False, "needs you", "needs you: add a `when:` line",
             "say when I should run it, e.g. `when: leftover`",
         )
 
     failures = failures_in_a_row(root, task)
     if failures >= GIVE_UP_AFTER:
         return Decision(
-            False, "problem", f"needs you: it didn't work {failures} times in a row",
+            False, "needs you", f"needs you: it didn't work {failures} times in a row",
             f"see why with `waddlebag logs {task.path.stem}`, then save the file to try again",
         )
 
@@ -147,18 +161,24 @@ def decide(
     if rest:
         left = rest.total_seconds() - (ctx.now.timestamp() - previous["ended"])
         if left > 0:
-            return Decision(False, "resting", f"resting, back in {format_duration(timedelta(seconds=left))}")
+            ago = timedelta(seconds=ctx.now.timestamp() - previous["ended"])
+            return Decision(
+                False, "waiting",
+                f"waiting: ran {format_duration(ago)} ago, again in {format_duration(timedelta(seconds=left))}",
+            )
 
     short_of = reserve_shortfall(ctx.usage, cfg)
     if short_of:
         left, reserve = short_of
-        return Decision(False, "waiting", f"waiting, I'm saving your last {reserve:g}%", f"{left}% left")
+        return Decision(False, "waiting", f"waiting: I'm saving your last {reserve:g}%", f"{left}% left")
 
     waiting_for = []
     for clauses in task.whens:
         ok, detail = evaluate(clauses, ctx)
         if ok:
-            return Decision(True, "ready", "ready, I'd pack this up right now", detail)
+            return Decision(
+                True, "waiting", f"waiting: starts at my next check (within {cfg.interval_minutes} minutes)", detail
+            )
         waiting_for.append(detail)
     return Decision(False, "waiting", "waiting", "; or ".join(waiting_for))
 
