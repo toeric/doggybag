@@ -9,6 +9,8 @@ import sys
 from html import escape
 from pathlib import Path
 
+from .runner import KILL_GRACE
+
 LABEL = "com.waddlebag.agent"
 
 
@@ -65,6 +67,8 @@ def build_plist(root: Path, interval_minutes: int, claude: str | None) -> dict:
         "StandardOutPath": str(root / "logs" / "waddlebag.log"),
         "StandardErrorPath": str(root / "logs" / "waddlebag.log"),
         "ProcessType": "Background",
+        # time between launchd's SIGTERM and its SIGKILL: long enough for waddlebag to stop its task first
+        "ExitTimeOut": KILL_GRACE + 15,
     }
 
 
