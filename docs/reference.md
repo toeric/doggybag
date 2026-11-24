@@ -6,14 +6,27 @@ In the code and the commands, a job is called a *task*.
 
 ## What Claude is allowed to do
 
-Nobody is there to click "allow" when a job runs, so Claude can only use the tools the job lists.
+Nobody is there to click "allow" when a task runs, so `access:` says up front how much Claude may do.
 
-```yaml
-tools: Read, Grep, Glob                 # the default: read and search only
-tools: Read, Grep, Glob, Edit, Write    # may also change files
-```
+| `access` | Claude may | Claude may not |
+|---|---|---|
+| `read` (the default) | read and search files in the `in:` folder | read anything outside it, change files, run commands, use the web |
+| `edit` | also change and add files in the `in:` folder | touch files outside it, run commands (so no tests, no `git commit`) |
+| `full` | also run any command | use the web |
 
-Leave `tools:` out and the job can only read.
+`full` lets Claude run anything, anywhere your account can (`git push`, `rm`), while nobody is watching. Use it with care.
+
+What each one allows, as Claude Code tools:
+
+| `access` | Tools |
+|---|---|
+| `read` | `Read(./**)`, `Grep(./**)`, `Glob(./**)` |
+| `edit` | the above, and `Edit(./**)` (this covers every file-editing tool) |
+| `full` | the above, and `Bash` |
+
+`./**` means "inside the folder Claude was started in", which is the `in:` folder.
+
+**Your own list.** For anything else, list the tools yourself with `tools:` in place of `access:`, for example `tools: Read(./**), WebSearch`. `tools: none` allows nothing. A task cannot have both.
 
 ## Handing the job to something else
 
@@ -52,7 +65,7 @@ run: git log -3 --patch | claude -p "Review these commits. List anything risky."
 
 Two things to know:
 
-- `tools:` and `model:` are settings for Claude Code, so they cannot be combined with `run:`.
+- `access:`, `tools:` and `model:` are settings for Claude Code, so they cannot be combined with `run:`.
 - Only the logged-in `claude` command uses your subscription quota. A program that calls the API with an API key is billed separately.
 
 ## Managing jobs
@@ -125,9 +138,10 @@ Durations use `m`, `h` and `d`, alone or combined, largest first: `45m`, `6h`, `
 | `when` | When to run. Can appear more than once | The task only runs by hand |
 | `in` | The folder to work in | The tasks folder |
 | `run` | A shell command that does the work in place of Claude Code | Claude Code does the work |
-| `tools` | What Claude may do without asking. `none` allows nothing. Not with `run` | `Read, Grep, Glob` |
+| `access` | How much Claude may do: `read`, `edit` or `full`. Not with `run` or `tools` | `read` |
+| `tools` | Advanced: list the Claude Code tools yourself, in place of `access`. `none` allows nothing | What `access` allows |
 | `model` | Which Claude model to use. Not with `run` | Your Claude Code default |
-| `cooldown` | How long before the task can trigger again after it is done. After a failure, a timeout or a run cut short it can try again after 1h, up to 3 times in a row; then it waits until you save the file again (or the cooldown, if shorter); after the reserve brake stops it, right away | `5h` |
+| `cooldown` | How long before the task can trigger again after it is done. After a failure, a timeout or a run cut short it can try again after 1h (or the cooldown, if shorter), up to 3 times in a row; then it waits until you save the file again. After the reserve brake stops it, right away | `5h` |
 | `timeout` | The task is stopped if it runs longer than this | `1h` |
 | `enabled` | Set to `false` to switch the task off | `true` |
 
@@ -155,7 +169,7 @@ When the remaining quota falls below the reserve, it sends SIGTERM to the task (
 ## When a run is cut short
 
 If the Mac shuts down or waddlebag is stopped while a task runs, the next check records that run as "cut short" and the task tries again after 1h.
-A task that may change files (it has `Edit`, `Write` or `Bash` in `tools:`, or a `run:` command) also sends a notification: check `git status` in its folder, it may be half-changed.
+A task that may change files (`access: edit` or `full`, a `tools:` list with `Edit`, `Write` or `Bash`, or a `run:` command) also sends a notification: check `git status` in its folder, it may be half-changed.
 
 ## When there is no network
 

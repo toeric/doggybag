@@ -225,7 +225,9 @@ class Cards(TaskCase):
 
     def test_claude_is_the_default_and_reads_only(self):
         t = self.write("---\nwhen: idle\n---\nSay hi.\n")
-        self.assertEqual(t.command("claude"), ["claude", "-p", "--allowedTools", "Read", "Grep", "Glob"])
+        self.assertEqual(
+            t.command("claude"), ["claude", "-p", "--allowedTools", "Read(./**)", "Grep(./**)", "Glob(./**)"]
+        )
         self.assertEqual(t.cwd, self.root / "tasks")
 
     def test_tools_and_model_go_to_claude(self):
@@ -247,6 +249,21 @@ class Cards(TaskCase):
         t = self.write("---\nwhen: idle\nrun: ./nightly.sh\n---\n")
         self.assertIsNone(t.error)
         self.assertEqual(t.body, "")
+
+    def test_access_says_how_much_claude_may_do(self):
+        tools = lambda text: self.write(text).command("claude")[3:]
+        self.assertEqual(tools("---\naccess: read\n---\nx\n"), ["Read(./**)", "Grep(./**)", "Glob(./**)"])
+        self.assertEqual(tools("---\naccess: edit\n---\nx\n")[-1], "Edit(./**)")
+        self.assertEqual(tools("---\naccess: Full\n---\nx\n")[-2:], ["Edit(./**)", "Bash"])
+        self.assertFalse(self.write("---\naccess: read\n---\nx\n").may_change_files)
+        self.assertTrue(self.write("---\naccess: edit\n---\nx\n").may_change_files)
+
+    def test_access_errors_and_warning(self):
+        self.assertIn("read, edit, full", self.write("---\naccess: write\n---\nx\n").error)
+        self.assertIn("not both", self.write("---\naccess: edit\ntools: Read\n---\nx\n").error)
+        self.assertIn("only apply when Claude", self.write("---\naccess: read\nrun: ./a.sh\n---\n").error)
+        self.assertIn("any command", self.write("---\naccess: full\n---\nx\n").warning)
+        self.assertIsNone(self.write("---\naccess: edit\n---\nx\n").warning)
 
     def test_run_with_claude_only_settings_is_an_error(self):
         self.assertIn("only apply when Claude", self.write("---\nrun: ./a.sh\ntools: Read\n---\n").error)
@@ -395,7 +412,7 @@ class Executing(TaskCase):
         entry = self.execute(t, state.Config(notify=False, claude=str(fake)))
         log = Path(entry["log"]).read_text()
         self.assertEqual(entry["exit"], 0)
-        self.assertIn("args=-p --allowedTools Read Grep Glob", log)
+        self.assertIn("args=-p --allowedTools Read(./**) Grep(./**) Glob(./**)", log)
         self.assertIn(f"cwd={self.work.resolve()}", log)
         self.assertIn("stdin=- Do the thing", log)
 
@@ -623,7 +640,7 @@ class Examples(unittest.TestCase):
             p.write_text(resources.files("waddlebag").joinpath("examples/todo-triage.md").read_text())
             t = load_task(p)
             self.assertFalse(t.enabled)
-            self.assertEqual(t.command("claude")[-3:], ["Read", "Grep", "Glob"])
+            self.assertEqual(t.command("claude")[-3:], ["Read(./**)", "Grep(./**)", "Glob(./**)"])
 
 
 class PlainWords(unittest.TestCase):
