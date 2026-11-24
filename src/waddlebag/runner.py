@@ -23,13 +23,14 @@ from .conditions import Context, evaluate, format_duration
 from .notify import notify
 from .tasks import Task, discover
 from .ui import UI, short
-from .usage import Usage, UsageError, fetch_usage, find_claude
+from .usage import Offline, Usage, UsageError, fetch_usage, find_claude
 
 EXIT_NOTHING_TO_DO = 75  # the command says "nothing to do right now": not a failure, and no cooldown
 WATCH_INTERVAL = 300  # seconds between quota checks while a task runs
 KILL_GRACE = 30  # seconds to wait after SIGTERM before SIGKILL
 RETRY_AFTER_FAILURE = timedelta(hours=1)  # rest after a failure or timeout, if shorter than the cooldown
 BEAT_INTERVAL = 60  # seconds between updates of running.json while a task runs
+OFFLINE_RETRY = 20  # seconds to wait before trying once more: right after wake the network is often not up yet
 
 
 def now_local() -> datetime:
@@ -353,6 +354,14 @@ def record_cut_short(root: Path, cfg: state.Config, ui: UI) -> dict | None:
     return entry
 
 
+def _read_quota(cfg: state.Config) -> Usage:
+    try:
+        return fetch_usage(cfg.claude)
+    except Offline:
+        time.sleep(OFFLINE_RETRY)
+        return fetch_usage(cfg.claude)
+
+
 def run_cycle(root: Path, only: str | None = None, ui: UI | None = None) -> int:
     """Check once. With `only`, run just that task and ignore its conditions. Returns the exit code."""
     cfg = state.load_config(root)
@@ -374,10 +383,17 @@ def _run_cycle(root: Path, cfg: state.Config, ui: UI, only: str | None) -> int:
         # holding the lock means no other run is alive, so a task still noted as running was cut short
         record_cut_short(root, cfg, ui)
         try:
-            usage = fetch_usage(cfg.claude)
+            usage = _read_quota(cfg)
+        except Offline:
+            # a quiet skip: one line when it starts, so the scheduler's log isn't filled every 10 minutes
+            if state.set_offline(root, True) or sys.stdout.isatty():
+                ui.say("sleep", "No network, so I'm skipping this round.", ui.dim("I'll look again next time."))
+            return 0
         except UsageError as e:
             ui.say("sad", ui.red("I couldn't read your quota."), ui.dim(str(e)))
             return 1
+        if state.set_offline(root, False):
+            ui.line("Back online.")
         now = now_local()
         ctx = Context(usage, state.update_idle(root, usage, now), now)
 

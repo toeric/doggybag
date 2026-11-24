@@ -448,6 +448,78 @@ class Executing(TaskCase):
                 self.assertFalse(second)
 
 
+class Offline(TaskCase):
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        (self.root / "config.toml").write_text("notify = false\nmascot = false\n")
+        self.patches = [mock.patch.object(runner, "OFFLINE_RETRY", 0)]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        super().tearDown()
+
+    def cycle(self, fetch):
+        from unittest import mock
+        lines = []
+        with mock.patch.object(runner, "fetch_usage", fetch), mock.patch.object(sys.stdout, "isatty", lambda: False):
+            code = runner.run_cycle(self.root, ui=UI(write=lines.append, fancy=False))
+        return code, lines
+
+    def test_offline_is_a_quiet_skip_said_once(self):
+        from waddlebag.usage import Offline as NoNetwork
+
+        def fetch(claude=None):
+            raise NoNetwork("no network")
+
+        code, lines = self.cycle(fetch)
+        self.assertEqual(code, 0)
+        self.assertTrue(any("No network" in line for line in lines))
+        code, lines = self.cycle(fetch)
+        self.assertEqual((code, lines), (0, []))
+        code, lines = self.cycle(lambda claude=None: make_usage())
+        self.assertEqual(code, 0)
+        self.assertIn("Back online.", lines)
+
+    def test_tries_once_more_before_giving_up(self):
+        from waddlebag.usage import Offline as NoNetwork
+        calls = []
+
+        def fetch(claude=None):
+            calls.append(1)
+            if len(calls) == 1:
+                raise NoNetwork("no network")
+            return make_usage()
+
+        code, lines = self.cycle(fetch)
+        self.assertEqual((code, len(calls)), (0, 2))
+        self.assertFalse(any("No network" in line for line in lines))
+
+    def test_other_problems_are_still_failures(self):
+        def fetch(claude=None):
+            raise UsageError("could not find the weekly usage line")
+
+        code, lines = self.cycle(fetch)
+        self.assertEqual(code, 1)
+
+    def test_a_failed_read_is_offline_only_when_the_network_is_down(self):
+        from unittest import mock
+        from waddlebag import usage
+        fake = self.root / "fake-claude"
+        fake.write_text("#!/bin/sh\nexit 1\n")
+        fake.chmod(0o755)
+        with mock.patch.object(usage, "online", lambda timeout=3: False):
+            with self.assertRaises(usage.Offline):
+                usage.fetch_usage(str(fake))
+        with mock.patch.object(usage, "online", lambda timeout=3: True):
+            with self.assertRaises(UsageError) as e:
+                usage.fetch_usage(str(fake))
+            self.assertNotIsInstance(e.exception, usage.Offline)
+
+
 class Examples(unittest.TestCase):
     def test_every_example_card_is_valid(self):
         examples = resources.files("waddlebag").joinpath("examples")

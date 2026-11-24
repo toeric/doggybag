@@ -140,6 +140,18 @@ def update_idle(root: Path, usage: Usage, now: datetime) -> timedelta:
     return timedelta(seconds=max(0.0, now.timestamp() - state["last_activity"]))
 
 
+def set_offline(root: Path, offline: bool) -> bool:
+    """Remember whether the last check found no network. Returns True when that changed."""
+    path = root / "state.json"
+    state = _read_json(path)
+    if bool(state.get("offline")) == offline:
+        return False
+    state["offline"] = offline
+    root.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return True
+
+
 KEEP_LOGS = 20  # run logs kept per task
 KEEP_RUNS = 500  # lines kept in runs.jsonl once it passes twice that
 

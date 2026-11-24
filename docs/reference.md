@@ -157,6 +157,10 @@ When the remaining quota falls below the reserve, it sends SIGTERM to the task (
 If the Mac shuts down or waddlebag is stopped while a task runs, the next check records that run as "cut short" and the task tries again after 1h.
 A task that may change files (it has `Edit`, `Write` or `Bash` in `tools:`, or a `run:` command) also sends a notification: check `git status` in its folder, it may be half-changed.
 
+## When there is no network
+
+A check that finds no network tries once more after 20 seconds, then skips the round quietly. It is not counted as a failed check, and the log gets one line when the network goes and one when it comes back.
+
 ## Settings file
 
 `~/.waddlebag/config.toml`:
