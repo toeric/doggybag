@@ -144,6 +144,18 @@ class Idle(unittest.TestCase):
             busy = NOW + timedelta(minutes=40)
             self.assertEqual(state.update_idle(root, make_usage(five_used=25), busy), timedelta(0))
 
+    def test_state_is_replaced_in_one_step(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            state.update_idle(root, make_usage(week_used=3), NOW)
+            before = (root / "state.json").read_text()
+            # a crash while the new version is being written leaves the old one whole
+            with mock.patch.object(state.os, "fsync", side_effect=OSError("power cut")):
+                with self.assertRaises(OSError):
+                    state.update_idle(root, make_usage(week_used=9), NOW + timedelta(minutes=10))
+            self.assertEqual((root / "state.json").read_text(), before)
+
     def test_reset_time_wobble_is_not_a_new_window(self):
         # same window, reset time moves from 6:00pm to 5:59pm: must not count as activity
         with tempfile.TemporaryDirectory() as d:
