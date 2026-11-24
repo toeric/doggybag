@@ -250,6 +250,16 @@ class Cards(TaskCase):
         self.assertIsNone(t.error)
         self.assertEqual(t.body, "")
 
+    def test_a_comment_can_follow_a_setting(self):
+        t = self.write(
+            f"---\nin: {self.work}   # where Claude works\nwhen: idle  # nobody around\n"
+            "access: edit # may change files\n---\n# A heading for Claude\nDo it. # not a comment\n"
+        )
+        self.assertIsNone(t.error)
+        self.assertEqual((t.cwd, t.access), (self.work, "edit"))
+        self.assertEqual(t.body, "# A heading for Claude\nDo it. # not a comment")
+        self.assertIn("cannot read the line", self.write("---\nwhen: # nothing\n---\nx\n").error)
+
     def test_access_says_how_much_claude_may_do(self):
         tools = lambda text: self.write(text).command("claude")[3:]
         self.assertEqual(tools("---\naccess: read\n---\nx\n"), ["Read(./**)", "Grep(./**)", "Glob(./**)"])
