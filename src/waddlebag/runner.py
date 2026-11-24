@@ -243,6 +243,18 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
         # With an empty body the command simply reads end-of-file.
         prompt_file.write(task.body.encode("utf-8"))
         prompt_file.seek(0)
+        # noted before the task starts, so there is no moment when it runs without a trace
+        running = {
+            "task": name,
+            "reason": reason,
+            "started": started.timestamp(),
+            "beat": started.timestamp(),
+            "pid": None,
+            "log": str(log_path),
+            "folder": str(task.cwd),
+            "may_change_files": task.may_change_files,
+        }
+        state.mark_running(root, running)
         try:
             proc = subprocess.Popen(
                 task.command(find_claude(cfg.claude)),
@@ -258,16 +270,7 @@ def execute(task: Task, ctx: Context, reason: str, cfg: state.Config, root: Path
             proc = None
 
         if proc is not None:
-            running = {
-                "task": name,
-                "reason": reason,
-                "started": started.timestamp(),
-                "beat": started.timestamp(),
-                "pid": proc.pid,
-                "log": str(log_path),
-                "folder": str(task.cwd),
-                "may_change_files": task.may_change_files,
-            }
+            running["pid"] = proc.pid
             state.mark_running(root, running)
             deadline = time.monotonic() + task.timeout.total_seconds()
             next_watch = time.monotonic() + WATCH_INTERVAL
