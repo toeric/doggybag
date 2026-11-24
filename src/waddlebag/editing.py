@@ -98,7 +98,10 @@ def new_template(name: str, folder: Path, example: str | None = None) -> str:
 
 def edit_template(task_path: Path) -> str:
     """The text `edit` opens: the help, then the task as it is saved."""
-    head = f"# Editing {task_path.stem}. To switch it off for now, add:   enabled: false\n"
+    head = (
+        f"# Editing {task_path.stem}. To switch it off for now, add:   enabled: false\n"
+        "# Saving it also lets a task that stopped after 3 failures try again.\n"
+    )
     return head + HELP.format(verb="save", cancel="Close without saving to leave it as it was.") + \
         task_path.read_text(encoding="utf-8")
 
