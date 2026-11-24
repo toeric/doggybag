@@ -198,6 +198,8 @@ The penguin and the colours only appear when waddlebag is writing to a terminal.
 
 - **The computer must be awake.** The schedule does not run while a Mac sleeps.
 - **macOS lists the schedule as a background item called "python".** After `setup`, macOS says "python" can run in the background: that is waddlebag's schedule. It has to start through the Python interpreter, or macOS privacy protection blocks it from folders such as `~/Documents`. Switching it off in System Settings → General → Login Items & Extensions stops the schedule, and `status` says so. `status` also warns when the last scheduled check failed.
+- **If `waddlebag` isn't found after installing,** `setup` prints the line to add to your shell's startup file (`~/.zshrc` for zsh) and `source` to run.
+- **If macOS keeps the schedule out of a folder,** `status` says so and names it. This has been seen when the schedule started a `waddlebag` script inside `~/Documents` (#30).
 - **Automatic scheduling is macOS-only for now.** On Linux, call `waddlebag run` from cron.
 - **Quota comes from the text output of `claude -p "/usage"`.** That call uses no quota, and waddlebag never touches your login credentials, but parsing will break if the output format changes (last verified with Claude Code 2.1.330).
 - **Usage has 1% resolution.** `idle` cannot see very small amounts of use.

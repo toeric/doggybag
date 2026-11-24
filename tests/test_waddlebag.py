@@ -774,6 +774,38 @@ class EditingTasks(TaskCase):
         self.assertEqual(self.edit(["edit", "nope"])[0], 1)
 
 
+class SetupHints(TaskCase):
+    def test_no_hint_when_waddlebag_is_on_path(self):
+        from unittest import mock
+        with mock.patch.object(cli.shutil, "which", lambda name: "/usr/local/bin/waddlebag"):
+            self.assertIsNone(cli.path_hint())
+
+    def test_hint_names_the_folder_and_the_shell_file(self):
+        import os
+        from unittest import mock
+        bin_dir = Path.home() / "Library" / "Python" / "3.13" / "bin"
+        with mock.patch.object(cli.shutil, "which", lambda name: None), \
+                mock.patch.object(cli, "_script_dir", lambda: bin_dir), \
+                mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
+            hint = cli.path_hint()
+        self.assertIn("~/.zshrc", hint[0])
+        self.assertEqual(hint[1], '  export PATH="$HOME/Library/Python/3.13/bin:$PATH"')
+        self.assertEqual(hint[2], "then run: source ~/.zshrc")
+
+    def test_no_hint_without_an_installed_command(self):
+        from unittest import mock
+        with mock.patch.object(cli.shutil, "which", lambda name: None), mock.patch.object(cli, "_script_dir", lambda: None):
+            self.assertIsNone(cli.path_hint())
+
+    def test_a_folder_macos_refused_is_named(self):
+        log = self.root / "waddlebag.log"
+        log.write_text("Traceback...\nPermissionError: [Errno 1] Operation not permitted: "
+                       "'/Users/me/Documents/proj/.venv/pyvenv.cfg'\n")
+        self.assertEqual(cli._blocked_folder(log), "/Users/me/Documents/proj/.venv/pyvenv.cfg")
+        log.write_text("PermissionError: Operation not permitted: 'x'\nNo network, so I'm skipping this round.\n")
+        self.assertIsNone(cli._blocked_folder(log))  # an old failure, not the last thing said
+
+
 class Examples(unittest.TestCase):
     def test_every_example_card_is_valid(self):
         examples = resources.files("waddlebag").joinpath("examples")

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
+import sysconfig
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +52,58 @@ def _when(previous: dict) -> str:
 
 def _last_time(previous: dict) -> str:
     return f"last time ({_when(previous)}): {_outcome(previous)} → {short(previous.get('log', '?'))}"
+
+
+def _script_dir() -> Path | None:
+    """The folder this install put the `waddlebag` command in, if it can be found."""
+    candidates = [Path(sys.executable).parent, Path(sysconfig.get_path("scripts"))]
+    try:
+        candidates.append(Path(sysconfig.get_path("scripts", f"{os.name}_user")))
+    except KeyError:
+        pass
+    return next((d for d in candidates if (d / "waddlebag").exists()), None)
+
+
+def _shell_rc() -> str:
+    shell = Path(os.environ.get("SHELL", "")).name
+    return {"zsh": "~/.zshrc", "bash": "~/.bash_profile"}.get(shell, "~/.profile")
+
+
+def path_hint() -> list[str] | None:
+    """What to add to the shell's startup file when `waddlebag` is not on PATH. None when it is."""
+    if shutil.which("waddlebag"):
+        return None
+    folder = _script_dir()
+    if folder is None:
+        return None  # run some other way (python -m, a checkout): nothing useful to suggest
+    try:
+        shown = "$HOME/" + str(folder.relative_to(Path.home()))
+    except ValueError:
+        shown = str(folder)
+    rc = _shell_rc()
+    return [
+        "`waddlebag` isn't on your PATH yet. Add this line to " + rc + ":",
+        f'  export PATH="{shown}:$PATH"',
+        f"then run: source {rc}",
+    ]
+
+
+# what macOS prints when its privacy protection keeps the schedule out of a folder (#30)
+_BLOCKED = "Operation not permitted"
+
+
+def _blocked_folder(log: Path) -> str | None:
+    """The protected path the last scheduled check was refused, from the end of its log."""
+    try:
+        with open(log, "rb") as f:
+            f.seek(max(0, log.stat().st_size - 4000))
+            tail = f.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    last = tail.rstrip().splitlines()[-1:] or [""]
+    if _BLOCKED not in last[0]:
+        return None
+    return last[0].split(":", 2)[-1].strip().strip("'")
 
 
 def _ui(root) -> UI:
@@ -113,6 +168,12 @@ def cmd_setup(args) -> int:
     ui.line("waddling around...")
     for step in steps:
         ui.line(f"  {step}")
+    hint = path_hint()
+    if hint:
+        ui.line()
+        ui.line(ui.yellow(f"! {hint[0]}"))
+        for line in hint[1:]:
+            ui.line(line)
     ui.line()
     if discover(tasks_dir):
         ui.line(f"{ui.bold('All set!')} `waddlebag status` shows what I'm waiting for.")
@@ -161,8 +222,12 @@ def cmd_status(args) -> int:
         since = datetime.fromtimestamp(trouble["since"])
         ui.line(ui.yellow(f"! my checks have been failing since {since:%b %d %H:%M}: {trouble.get('why', '?')}"))
     elif failed is not None:
-        log = short(root / "logs" / "waddlebag.log")
-        ui.line(ui.yellow(f"! my last scheduled check failed (exit {failed}). What it said is in {log}"))
+        log = root / "logs" / "waddlebag.log"
+        ui.line(ui.yellow(f"! my last scheduled check failed (exit {failed}). What it said is in {short(log)}"))
+        blocked = _blocked_folder(log)
+        if blocked:
+            ui.line(ui.yellow(f"  macOS kept the schedule out of {short(Path(blocked))}."))
+            ui.line(ui.yellow("  Install waddlebag outside ~/Documents, ~/Desktop and ~/Downloads, then run `waddlebag setup`"))
     if (trouble or failed is not None) and ui.mascot_on:
         ui.line()  # plain mode adds its own blank line just below
     if not ui.mascot_on:
