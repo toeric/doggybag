@@ -814,6 +814,36 @@ class SetupHints(TaskCase):
         self.assertIsNone(cli._blocked_folder(log))  # an old failure, not the last thing said
 
 
+class StatusCommand(TaskCase):
+    def status(self):
+        import os
+        from unittest import mock
+        out = []
+        (self.root / "config.toml").write_text("mascot = false\nreserve_5h = 15\n")
+        with mock.patch.dict(os.environ, {"WADDLEBAG_HOME": str(self.root)}), \
+                mock.patch.object(cli, "fetch_usage", lambda claude=None: make_usage()), \
+                mock.patch.object(cli.launchd, "is_installed", lambda: True), \
+                mock.patch.object(cli.launchd, "is_loaded", lambda: True), \
+                mock.patch.object(cli.launchd, "last_exit", lambda: 0), \
+                mock.patch("builtins.print", lambda *a, **k: out.append(" ".join(map(str, a)))):
+            code = cli.main(["status"])
+        return code, "\n".join(out)
+
+    def test_status_says_what_it_keeps_and_what_to_type_next(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
+        code, out = self.status()
+        self.assertEqual(code, 0)
+        self.assertIn("I always keep 15% of the 5h window and 5% of the week for you", out)
+        self.assertIn("waddlebag pack <name>", out)
+        self.assertIn("waddlebag edit <task>", out)
+        self.assertIn("todo ", out)
+
+    def test_last_time_points_to_the_logs_command(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
+        state.record_run(self.root, {"task": "todo.md", "started": 0, "ended": 60, "exit": 0, "log": "/x/y.log"})
+        self.assertIn("done in 1m → waddlebag logs todo", self.status()[1])
+
+
 class InstallScript(unittest.TestCase):
     def test_install_script_is_valid_sh(self):
         import subprocess

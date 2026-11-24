@@ -56,7 +56,8 @@ def _when(previous: dict) -> str:
 
 
 def _last_time(previous: dict) -> str:
-    return f"last time ({_when(previous)}): {_outcome(previous)} → {short(previous.get('log', '?'))}"
+    # the command to type, not the log's path: the path is a detail
+    return f"last time ({_when(previous)}): {_outcome(previous)} → waddlebag logs {_stem(previous['task'])}"
 
 
 def _script_dir() -> Path | None:
@@ -221,6 +222,8 @@ def cmd_status(args) -> int:
         _window_line(ui, "5h", usage.five_hour, now),
         _window_line(ui, "week", usage.week, now),
         ui.dim(f"quiet for {format_duration(idle)} · {checking}"),
+        # the promise not to get in your way, said every time rather than only when it kicks in
+        ui.dim(f"I always keep {cfg.reserve_5h:g}% of the 5h window and {cfg.reserve_week:g}% of the week for you"),
     )
     trouble = state.failing(root)
     if trouble:
@@ -268,6 +271,11 @@ def cmd_status(args) -> int:
     if skipped:
         ui.line()
         ui.line(ui.dim(f"· ignoring {', '.join(p.name for p in skipped)}: a task is a .md file"))
+    if tasks:
+        # status is the one command to remember: the others are learned from here
+        ui.line()
+        ui.line(ui.dim("waddlebag pack <name>   hand me a new task"))
+        ui.line(ui.dim("waddlebag edit <task>   change one, or switch it off"))
     return 0
 
 
