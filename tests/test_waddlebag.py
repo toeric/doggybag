@@ -838,6 +838,43 @@ class StatusCommand(TaskCase):
         self.assertIn("waddlebag edit <task>", out)
         self.assertIn("todo ", out)
 
+    def offline_status(self):
+        import os
+        from unittest import mock
+        from waddlebag.usage import Offline as NoNetwork
+
+        def fetch(claude=None):
+            raise NoNetwork("no network")
+
+        out = []
+        with mock.patch.dict(os.environ, {"WADDLEBAG_HOME": str(self.root)}), \
+                mock.patch.object(cli, "fetch_usage", fetch), \
+                mock.patch.object(cli.launchd, "is_installed", lambda: True), \
+                mock.patch.object(cli.launchd, "is_loaded", lambda: True), \
+                mock.patch.object(cli.launchd, "last_exit", lambda: 0), \
+                mock.patch("builtins.print", lambda *a, **k: out.append(" ".join(map(str, a)))):
+            code = cli.main(["status"])
+        return code, "\n".join(out)
+
+    def test_offline_status_shows_the_last_numbers_and_the_tasks(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
+        (self.root / "config.toml").write_text("mascot = false\n")
+        state.update_idle(self.root, make_usage(five_used=42), runner.now_local() - timedelta(minutes=25))
+        code, out = self.offline_status()
+        self.assertEqual(code, 0)
+        self.assertIn("no network", out)
+        self.assertIn("from 25m ago", out)
+        self.assertIn("42% used", out)
+        self.assertIn("todo ", out)
+
+    def test_offline_status_before_any_numbers_still_lists_the_tasks(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle\n---\nx\n", name="todo.md")
+        (self.root / "config.toml").write_text("mascot = false\n")
+        code, out = self.offline_status()
+        self.assertEqual(code, 1)
+        self.assertIn("couldn't read your quota", out)
+        self.assertIn("○ todo", out)
+
     def test_last_time_points_to_the_logs_command(self):
         self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
         state.record_run(self.root, {"task": "todo.md", "started": 0, "ended": 60, "exit": 0, "log": "/x/y.log"})
