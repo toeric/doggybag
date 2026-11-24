@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -37,6 +38,23 @@ _MONTHS = {
 
 class UsageError(Exception):
     pass
+
+
+class Offline(UsageError):
+    """The quota could not be read because there is no network. Not a failure: it fixes itself."""
+
+
+# Claude Code talks to this host, so if it can't be reached, neither can /usage
+PROBE_HOST, PROBE_PORT = "api.anthropic.com", 443
+
+
+def online(timeout: float = 3) -> bool:
+    """Whether the network is up: a plain TCP connection, nothing is sent."""
+    try:
+        with socket.create_connection((PROBE_HOST, PROBE_PORT), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 @dataclass
@@ -128,9 +146,20 @@ def find_claude(configured: str | None = None) -> str | None:
 
 
 def fetch_usage(claude: str | None = None, now: datetime | None = None) -> Usage:
+    """Read the quota. Raises Offline when there is no network, UsageError for anything else."""
     binary = find_claude(claude)
     if not binary:
         raise UsageError("`claude` not found on PATH; install Claude Code and log in first")
+    try:
+        return _fetch_usage(binary, now)
+    except UsageError as e:
+        # what `claude` prints when offline is not something to parse, so ask the network directly
+        if not online():
+            raise Offline("no network") from e
+        raise
+
+
+def _fetch_usage(binary: str, now: datetime | None) -> Usage:
     try:
         proc = subprocess.run(
             [binary, "-p", "/usage"],
