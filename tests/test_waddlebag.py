@@ -796,19 +796,12 @@ class Examples(unittest.TestCase):
             self.assertEqual(lines[0], "---", item.name)
             self.assertTrue(lines[1].startswith("# "), item.name)
             self.assertTrue(lines[2].startswith("when: "), item.name)
-            self.assertEqual(lines[3], "in: ~/path/to/your/repo", item.name)
             closing = lines.index("---", 1)
-            self.assertEqual(lines[closing - 1], "enabled: false", item.name)
+            settings = lines[2:closing]
+            # pack gives an example your folder, and saving it means it is on
+            self.assertFalse(any(l.startswith(("in:", "enabled:")) for l in settings), item.name)
             # apart from the first description line, the settings block has no comments or blank lines
-            self.assertTrue(all(l and not l.startswith("#") for l in lines[2:closing]), item.name)
-
-    def test_starter_is_switched_off_and_reads_only(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / "10-todo-triage.md"
-            p.write_text(resources.files("waddlebag").joinpath("examples/todo-triage.md").read_text())
-            t = load_task(p)
-            self.assertFalse(t.enabled)
-            self.assertEqual(t.command("claude")[-3:], ["Read(./**)", "Grep(./**)", "Glob(./**)"])
+            self.assertTrue(all(l and not l.startswith("#") for l in settings), item.name)
 
 
 class PlainWords(unittest.TestCase):

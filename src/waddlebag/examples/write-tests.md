@@ -1,11 +1,9 @@
 ---
 # Writes tests for the least-tested file. Allowed to change files.
 when: idle and behind
-in: ~/path/to/your/repo
 access: edit
 cooldown: 1d
 timeout: 45m
-enabled: false
 ---
 Find the source file in this repository that has the least test coverage.
 
