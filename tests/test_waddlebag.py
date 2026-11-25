@@ -908,6 +908,62 @@ class OneLine(unittest.TestCase):
         self.assertIn(TAGLINE, readme)
 
 
+class Uninstalling(TaskCase):
+    def uninstall(self, argv=("uninstall",), answers=(), which=None, rc=None):
+        import os
+        from unittest import mock
+        (self.root / "config.toml").write_text("mascot = false\n")
+        home = self.root / "home"
+        home.mkdir(exist_ok=True)
+        if rc is not None:
+            (home / ".zshrc").write_text(rc)
+        asked, out, gone = list(answers), [], []
+        with mock.patch.dict(os.environ, {"WADDLEBAG_HOME": str(self.root), "HOME": str(home)}), \
+                mock.patch.object(cli.launchd, "uninstall", lambda: gone.append(1) or True), \
+                mock.patch.object(cli.shutil, "which", lambda name: which), \
+                mock.patch.object(cli, "_ask", lambda q: asked.pop(0) if asked else "d"), \
+                mock.patch("builtins.print", lambda *a, **k: out.append(" ".join(map(str, a)))):
+            code = cli.main(list(argv))
+        return code, "\n".join(out), bool(gone)
+
+    def test_deletes_everything_after_asking(self):
+        code, out, stopped = self.uninstall(answers=("y",), which="/somewhere/bin/waddlebag",
+                                            rc="x\n# added by the waddlebag installer\nexport PATH=\"$HOME/.local/bin:$PATH\"\n")
+        self.assertEqual(code, 0)
+        self.assertTrue(stopped)
+        self.assertFalse(self.root.exists())
+        self.assertIn("rm /somewhere/bin/waddlebag", out)
+        self.assertIn('export PATH="$HOME/.local/bin:$PATH"', out)
+
+    def test_no_keeps_the_folder(self):
+        code, out, stopped = self.uninstall(answers=("",))
+        self.assertTrue(stopped)
+        self.assertTrue((self.root / "tasks").is_dir())
+        self.assertIn("kept", out)
+
+    def test_yes_skips_the_question(self):
+        self.uninstall(argv=("uninstall", "--yes"))
+        self.assertFalse(self.root.exists())
+
+    def test_a_folder_that_isnt_ours_is_left_alone(self):
+        import os
+        from unittest import mock
+        with mock.patch.object(cli, "_looks_like_ours", lambda root: False):
+            code, out, _ = self.uninstall(argv=("uninstall", "--yes"))
+        self.assertTrue(self.root.exists())
+        self.assertIn("doesn't look like my folder", out)
+
+    def test_home_is_never_ours(self):
+        self.assertFalse(cli._looks_like_ours(Path.home()))
+
+    def test_not_while_a_task_runs(self):
+        state.mark_running(self.root, {"task": "a.md", "started": 0})
+        with runner.single_instance(self.root):
+            code, out, stopped = self.uninstall(argv=("uninstall", "--yes"))
+        self.assertEqual((code, stopped), (1, False))
+        self.assertTrue(self.root.exists())
+
+
 class InstallScript(unittest.TestCase):
     def test_install_script_is_valid_sh(self):
         import subprocess

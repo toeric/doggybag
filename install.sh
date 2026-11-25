@@ -100,3 +100,5 @@ if [ "${WADDLEBAG_NO_SETUP:-}" != "1" ]; then
     say ""
     PATH="$BIN:$PATH" "$VENV/bin/waddlebag" setup
 fi
+say ""
+say "To remove it all later: waddlebag uninstall"
