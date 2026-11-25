@@ -18,7 +18,7 @@
 
 ## How it works
 
-1. **You hand over a task.** A short text: what Claude should do, in which folder, and when.
+1. **You hand over a task.** `waddlebag pack` opens a short template: what Claude should do, in which folder, and when.
 2. **waddlebag keeps an eye on your quota.** Every 10 minutes it reads `/usage`, which costs nothing.
 3. **When the moment comes, it runs the task.** Say the 5-hour window resets in under an hour with 30% still unused: waddlebag hands your text to Claude Code and saves the answer.
 
@@ -60,14 +60,27 @@ waddlebag checks it and keeps it in `~/.waddlebag/tasks/todo-triage.md`. Answers
 
 Or [write your own numbers](docs/reference.md#conditions).
 
+## Check on it
+
+`waddlebag status` shows your quota and every task in one of four states:
+
+| | State | |
+|---|---|---|
+| `▶` | running | running right now |
+| `○` | waiting | nothing for you to do; the line says why |
+| `!` | needs you | something to fix; the line says what |
+| `–` | off | you switched it off |
+
+Only `!` needs you.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `waddlebag setup` | Checks your environment and starts the 10-minute schedule |
-| `waddlebag status` | Shows your quota and what each task is waiting for |
 | `waddlebag pack <name>` | Hands over a new task: opens your editor on a template for the folder you are in |
-| `waddlebag edit [name]` | Changes a task in your editor. With no name, pick one from a list |
+| `waddlebag status` | Shows your quota and what each task is waiting for |
+| `waddlebag edit [name]` | Changes a task in your editor, or switches it off. With no name, pick one from a list |
 | `waddlebag run` | Checks once, right now. `waddlebag run <task>` runs that task right away |
 | `waddlebag logs` | Lists recent runs. `waddlebag logs <task>` shows that task's latest answer |
 

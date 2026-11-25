@@ -2,6 +2,34 @@
 
 The details, for when you need them. The [README](../README.md) has the short version.
 
+## What `pack` opens
+
+`waddlebag pack <name>` opens your editor (`$VISUAL`, then `$EDITOR`, then `vi`) on a template like this:
+
+```markdown
+# New waddlebag task: todo-triage
+# Lines starting with # are removed when you save (except in your text at the bottom).
+# Save and close to pack it. Save it empty to cancel.
+# ... what leftover, idle, behind and read, edit, full mean ...
+---
+in: ~/work/myrepo   # where Claude works (the folder you ran this in)
+when: leftover
+access: read
+# when: idle and behind     # also run on days you barely use Claude
+# model: sonnet             # default: your Claude Code default
+# timeout: 1h               # stop it if it runs longer
+# cooldown: 5h              # wait this long before running it again
+# run: python3 agent.py     # hand the text to your own program instead of Claude
+# tools: Read(./**), WebSearch   # advanced: list Claude Code tools yourself instead of access
+---
+Write what Claude should do here.
+```
+
+When you save, the help comments go, the task is checked, and only a good task is written to `~/.waddlebag/tasks/<name>.md`.
+If something is wrong you see what, and can edit again or discard. `waddlebag edit` opens a saved task the same way.
+
+The name is the file name: letters, digits and `-`. `--from <example>` starts from a built-in example instead of the empty text.
+
 ## What Claude is allowed to do
 
 Nobody is there to click "allow" when a task runs, so `access:` says up front how much Claude may do.
