@@ -18,6 +18,7 @@ TEXT = "#d6dae0"
 DIM = "#8a909a"
 GREEN = "#8fd694"
 ORANGE = "#f5a03c"
+RED = "#f07178"
 BAR_BG = "#3a3f48"
 FONT = 'font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"'
 
@@ -99,7 +100,7 @@ def status() -> str:
 
     # the penguin block, laid out the way ui.say does it
     art_lines = len(mascot.SPRITES["look"]) // 2
-    words = 5
+    words = 8
     height = max(art_lines, words)
     art_top, text_top = (height - art_lines) // 2, (height - words) // 2
     body += pixels("look", PAD, PAD + (row + art_top) * LH, CW, LH / 2, overlap=0.3)
@@ -112,36 +113,41 @@ def status() -> str:
         text(tx + 16, line, f" {used:>3}% used")
         text(tx + 26, line, f" · resets in {resets}", DIM)
     text(tx, row + text_top + 4, "quiet for 12m · I check every 10 minutes", DIM)
+    text(tx, row + text_top + 5, "I always keep 10% of the 5h window and 5% of the week for you", DIM)
+    text(tx, row + text_top + 7, "Last 7 days: 4 tasks done, about 9% of your week")
     row += height + 1  # and the blank line below it
 
     jobs = [
-        ("●", GREEN, "10-todo-triage.md", [("ready", GREEN), (", I'd pack this up right now", TEXT)],
-         "the 5-hour window resets in 42m · 60% left"),
-        ("○", DIM, "20-docs-check.md", [("waiting", TEXT)],
-         "you're keeping pace this week (6 behind, I go at 20)"),
-        ("○", DIM, "30-write-tests.md", [("resting, back in 23h", TEXT)],
-         "last time (Nov 22 18:50): done in 4m → ~/.waddlebag/logs/30-write-tests.log"),
-        ("–", DIM, "40-own-agent.md", [("switched off", TEXT)], None),
+        ("▶", GREEN, "write-tests", [("running for 12m", GREEN)], None),
+        ("○", GREEN, "todo-triage", [("waiting: starts at my next check (within 10 minutes)", GREEN)],
+         "5h window resets in 42m (I go at ≤ 1h) · 60% left (I go at ≥ 30%)"),
+        ("○", DIM, "docs-check", [("waiting: ran 1h ago, again in 4h", TEXT)],
+         "last time (Nov 22 18:50): done in 4m → waddlebag logs docs-check"),
+        ("!", RED, "review-commits", [("needs you: it didn't work 3 times in a row", RED)],
+         "see why with `waddlebag logs review-commits`, then save the file to try again"),
+        ("–", DIM, "old-idea", [("off", TEXT)], None),
     ]
-    widest = 0
+    # every line counts for the width: the words beside the penguin as well as the task lines
+    widest = tx + len("I always keep 10% of the 5h window and 5% of the week for you")
     for mark, colour, name, headline, detail in jobs:
         text(0, row, mark, colour)
         text(2, row, name)
-        col = 2 + 21
+        col = 2 + 16
         for part, part_colour in headline:
             text(col, row, part, part_colour)
             col += len(part)
+        widest = max(widest, col)
         row += 1
         if detail:
             text(4, row, detail, DIM)
             widest = max(widest, 4 + len(detail))
             row += 1
 
-    width = round(2 * PAD + widest * CW)
+    width = round(2 * PAD + (widest + 2) * CW)
     height = round(2 * PAD + row * LH - (LH - 13))
     return svg(width, height,
                "Terminal output of waddlebag status: a pixel penguin with a magnifying glass, "
-               "two quota bars, and four jobs with their states",
+               "two quota bars, and five tasks with their states: running, waiting, needs you and off",
                body, extra=f'{FONT} font-size="14" ')
 
 
