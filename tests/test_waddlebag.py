@@ -875,6 +875,23 @@ class StatusCommand(TaskCase):
         self.assertIn("couldn't read your quota", out)
         self.assertIn("○ todo", out)
 
+    def test_status_says_what_the_last_week_did(self):
+        self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
+        now = runner.now_local().timestamp()
+        for before, after, code in ((10, 13, 0), (13, 19, 0), (20, 4, 0), (4, 5, 1)):  # the week reset in the third
+            state.record_run(self.root, {"task": "todo.md", "ended": now - 3600, "exit": code,
+                                         "week_before": before, "week_after": after})
+        state.record_run(self.root, {"task": "todo.md", "ended": now - 8 * 86400, "exit": 0,
+                                     "week_before": 0, "week_after": 50})  # too old
+        self.assertIn("Last 7 days: 4 runs, 3 done, about 10% of your week", self.status()[1])
+
+    def test_quota_after_a_run_is_added_to_its_record(self):
+        state.record_run(self.root, {"task": "a.md", "ended": 1, "week_before": 3})
+        state.record_run(self.root, {"task": "b.md", "ended": 2, "week_before": 3})
+        state.amend_last_run(self.root, "a.md", week_after=7)
+        self.assertEqual(state.last_run(self.root, "a.md")["week_after"], 7)
+        self.assertNotIn("week_after", state.last_run(self.root, "b.md"))
+
     def test_last_time_points_to_the_logs_command(self):
         self.write(f"---\nin: {self.work}\nwhen: idle >= 9h\n---\nx\n", name="todo.md")
         state.record_run(self.root, {"task": "todo.md", "started": 0, "ended": 60, "exit": 0, "log": "/x/y.log"})

@@ -193,6 +193,18 @@ def cmd_setup(args) -> int:
     return 0
 
 
+def _results_line(ui: UI, root: Path, now: datetime) -> list[str]:
+    """What waddlebag did lately: the one thing that says whether it is worth keeping."""
+    ran, done, points = state.week_summary(root, now)
+    if not ran:
+        return []
+    what = f"{done} task{'s' if done != 1 else ''} done" if done == ran else f"{ran} runs, {done} done"
+    if points is not None:
+        # an estimate: 1% steps, and your own use may overlap
+        what += f", about {points}% of your week" if points else ", less than 1% of your week"
+    return ["", f"Last 7 days: {what}"]
+
+
 def cmd_status(args) -> int:
     root = state.home()
     ui = _ui(root)
@@ -234,6 +246,7 @@ def cmd_status(args) -> int:
         ui.dim(f"quiet for {format_duration(idle)} · {checking}"),
         # the promise not to get in your way, said every time rather than only when it kicks in
         ui.dim(f"I always keep {cfg.reserve_5h:g}% of the 5h window and {cfg.reserve_week:g}% of the week for you"),
+        *_results_line(ui, root, now),
     )
     trouble = state.failing(root)
     if trouble:

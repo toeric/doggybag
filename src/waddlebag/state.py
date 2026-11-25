@@ -234,6 +234,40 @@ def record_run(root: Path, entry: dict) -> None:
         _write_atomic(path, "".join(lines[-KEEP_RUNS:]))
 
 
+def amend_last_run(root: Path, task_name: str, **fields) -> None:
+    """Add fields to the newest record of this task, such as the quota read after it ended."""
+    path = root / "runs.jsonl"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return
+    for i in range(len(lines) - 1, -1, -1):
+        try:
+            entry = json.loads(lines[i])
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("task") == task_name:
+            entry.update(fields)
+            lines[i] = json.dumps(entry, ensure_ascii=False) + "\n"
+            _write_atomic(path, "".join(lines))
+            return
+
+
+def week_summary(root: Path, now: datetime, days: int = 7) -> tuple[int, int, int | None]:
+    """(runs, runs done, about how many points of the week they used) over the last `days` days.
+
+    The quota has 1% steps and your own use overlaps, so the points are an estimate; None when no run in
+    that time has numbers from before and after it.
+    """
+    since = now.timestamp() - days * 86400
+    recent = [r for r in runs(root) if r["ended"] >= since]
+    done = sum(1 for r in recent if r.get("exit") == 0 and not r.get("stopped"))
+    measured = [r for r in recent if isinstance(r.get("week_before"), int) and isinstance(r.get("week_after"), int)]
+    # a week that reset during the run would look like negative use
+    points = sum(max(0, r["week_after"] - r["week_before"]) for r in measured) if measured else None
+    return len(recent), done, points
+
+
 def prune_logs(logs: Path, stem: str, keep: int = KEEP_LOGS) -> None:
     """Delete all but the newest `keep` run logs of one task. Names end in a sortable timestamp."""
     pattern = re.compile(re.escape(stem) + r"-\d{8}-\d{6}\.log")
