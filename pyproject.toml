@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "waddlebag"
 version = "0.1.0"
-description = "Run your own scripts when Claude subscription quota is about to go unused."
+description = "Your Claude quota resets whether you use it or not. waddlebag spends what's left on tasks you hand it."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
