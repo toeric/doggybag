@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, editing, launchd, state
+from . import TAGLINE, __version__, editing, launchd, state
 from .conditions import Context, format_duration
 from .runner import EXIT_NOTHING_TO_DO, decide, now_local, quick_state, run_cycle, running_now
 from .tasks import discover, ignored
@@ -172,7 +172,7 @@ def cmd_setup(args) -> int:
         steps.append(ui.dim("· I can only schedule myself on macOS for now. Add this to cron:"))
         steps.append(ui.dim(f"    */{cfg.interval_minutes} * * * * {sys.executable} -m waddlebag run"))
 
-    ui.say("happy", ui.bold("waddlebag"), ui.dim("take home what you couldn't finish"))
+    ui.say("happy", ui.bold("waddlebag"), ui.dim(TAGLINE))
     ui.line("waddling around...")
     for step in steps:
         ui.line(f"  {step}")
@@ -433,7 +433,7 @@ def cmd_logs(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="waddlebag",
-        description="Run your own tasks on leftover Claude quota before it resets.",
+        description=TAGLINE,
     )
     parser.add_argument("--version", action="version", version=f"waddlebag {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)

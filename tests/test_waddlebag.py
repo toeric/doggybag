@@ -898,6 +898,16 @@ class StatusCommand(TaskCase):
         self.assertIn("done in 1m → waddlebag logs todo", self.status()[1])
 
 
+class OneLine(unittest.TestCase):
+    def test_the_same_line_everywhere(self):
+        import re
+        from waddlebag import TAGLINE
+        root = Path(__file__).resolve().parent.parent
+        self.assertIn(f'description = "{TAGLINE}"', (root / "pyproject.toml").read_text())
+        readme = re.sub(r"<br>\s*", " ", (root / "README.md").read_text())
+        self.assertIn(TAGLINE, readme)
+
+
 class InstallScript(unittest.TestCase):
     def test_install_script_is_valid_sh(self):
         import subprocess

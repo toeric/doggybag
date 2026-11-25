@@ -5,8 +5,8 @@
 <h1 align="center">waddlebag</h1>
 
 <p align="center">
-  Your Claude subscription quota resets whether you used it or not.<br>
-  waddlebag spends what's left on tasks you hand it, before it expires.
+  Your Claude quota resets whether you use it or not.<br>
+  waddlebag spends what's left on tasks you hand it.
 </p>
 
 <p align="center">
