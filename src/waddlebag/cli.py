@@ -394,6 +394,69 @@ def _quick_list(ui: UI, root: Path) -> None:
         ui.line(f"{_MARKS[kind]} {t.path.stem:<{width}}    {kind}")
 
 
+INSTALLER_MARK = "# added by the waddlebag installer"  # install.sh writes this above the PATH line
+
+
+def _installer_lines() -> list[tuple[str, str]]:
+    """(startup file, line) for each PATH line install.sh added."""
+    found = []
+    for name in ("~/.zshrc", "~/.bash_profile", "~/.profile"):
+        try:
+            lines = Path(name).expanduser().read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for i, line in enumerate(lines[:-1]):
+            if line.strip() == INSTALLER_MARK:
+                found.append((name, lines[i + 1].strip()))
+    return found
+
+
+def _looks_like_ours(root: Path) -> bool:
+    """Only delete a folder that is plainly waddlebag's: never a home folder that WADDLEBAG_HOME points at."""
+    if root.resolve() in (Path.home().resolve(), Path("/").resolve()):
+        return False
+    return (root / "config.toml").exists() or (root / "tasks").is_dir()
+
+
+def cmd_uninstall(args) -> int:
+    root = state.home()
+    ui = _ui(root)
+    if root.is_dir() and running_now(root):
+        ui.say("sad", ui.red("A task is running right now."), "Try again when it has finished (`waddlebag status`).")
+        return 1
+
+    removed = launchd.uninstall() if sys.platform == "darwin" else False
+    ui.line(("✓ stopped my schedule" if removed else "· I wasn't checking on a schedule"))
+
+    deleted = False
+    if root.is_dir():
+        if not _looks_like_ours(root):
+            ui.line(ui.yellow(f"! {short(root)} doesn't look like my folder, so I left it alone"))
+        else:
+            answer = "y" if args.yes else _ask(
+                f"Delete {short(root)}, with your tasks, logs and history? [y/N] "
+            )
+            if answer.strip().lower().startswith("y"):
+                deleted = True
+            else:
+                ui.line(f"· kept {short(root)}: your tasks are still there")
+
+    # the command itself: wherever you put it, it is yours to remove
+    command = shutil.which("waddlebag")
+    if deleted and command:
+        ui.line(f"· the `waddlebag` command at {short(Path(command))} now points nowhere. Remove it with: rm {command}")
+    for name, line in _installer_lines():
+        ui.line(f"· the installer added this to {name}, in case nothing else needs it:")
+        ui.line(f"    {line}")
+
+    if deleted:
+        # last: this very program may be running from the venv inside it
+        shutil.rmtree(root, ignore_errors=True)
+        ui.line(f"✓ deleted {short(root)}")
+    ui.say("sleep", "Bye for now.")
+    return 0
+
+
 def cmd_run(args) -> int:
     return run_cycle(state.home(), only=args.task)
 
@@ -455,6 +518,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("edit", help="change a task in your editor; with no name, pick one from a list")
     p.add_argument("name", nargs="?", help="the task to change")
     p.set_defaults(func=cmd_edit)
+
+    p = sub.add_parser("uninstall", help="stop the schedule and delete ~/.waddlebag (asks first)")
+    p.add_argument("--yes", action="store_true", help="don't ask before deleting")
+    p.set_defaults(func=cmd_uninstall)
 
     p = sub.add_parser("run", help="check once and run the tasks whose time has come")
     p.add_argument("task", nargs="?", help="run this one task now, whatever its when:")
